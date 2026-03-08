@@ -1,0 +1,116 @@
+{
+  "ComfyPencilStudio": {
+    "display_name": "Comfy Pencil Studio",
+    "description": "Open a layered drawing studio, paint directly in ComfyUI, and output the current composite as IMAGE and MASK.",
+    "inputs": {
+      "document_name": {
+        "name": "Document Name",
+        "tooltip": "Visible title for the saved painting document."
+      },
+      "document_id": {
+        "name": "Document Id",
+        "tooltip": "Internal saved document reference managed by the studio."
+      },
+      "revision": {
+        "name": "Revision",
+        "tooltip": "Internal revision value used to invalidate cached execution when the painting changes."
+      },
+      "canvas_width": {
+        "name": "Canvas Width",
+        "tooltip": "Pixel width of the painting surface."
+      },
+      "canvas_height": {
+        "name": "Canvas Height",
+        "tooltip": "Pixel height of the painting surface."
+      },
+      "background_mode": {
+        "name": "Background Mode",
+        "tooltip": "Choose whether the document stores a transparent background or a solid paper tone."
+      },
+      "background_color": {
+        "name": "Background Color",
+        "tooltip": "Paper color used when the background mode is solid."
+      },
+      "flatten_background": {
+        "name": "Flatten Background",
+        "tooltip": "Bake the paper or background image into the IMAGE output."
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "Document",
+        "tooltip": "Workflow document payload for downstream ComfyPencil nodes."
+      },
+      "1": {
+        "name": "Image",
+        "tooltip": "Current composite image from the studio."
+      },
+      "2": {
+        "name": "Mask",
+        "tooltip": "Alpha mask of the painted content."
+      },
+      "3": {
+        "name": "Metadata JSON",
+        "tooltip": "Summary JSON for the current document state."
+      }
+    }
+  },
+  "ComfyPencilImportLayer": {
+    "display_name": "Comfy Pencil Import Layer",
+    "description": "Push an upstream IMAGE or MASK into a ComfyPencil document as a new layer.",
+    "outputs": {
+      "0": {
+        "name": "Document",
+        "tooltip": "Updated document payload."
+      },
+      "1": {
+        "name": "Image",
+        "tooltip": "Rendered document image after the import."
+      },
+      "2": {
+        "name": "Mask",
+        "tooltip": "Rendered document alpha after the import."
+      },
+      "3": {
+        "name": "Metadata JSON",
+        "tooltip": "Updated document summary."
+      }
+    }
+  },
+  "ComfyPencilRenderDocument": {
+    "display_name": "Comfy Pencil Render Document",
+    "description": "Render a PENCIL_DOCUMENT into IMAGE and MASK outputs.",
+    "outputs": {
+      "0": {
+        "name": "Image",
+        "tooltip": "Document composite."
+      },
+      "1": {
+        "name": "Mask",
+        "tooltip": "Document alpha."
+      },
+      "2": {
+        "name": "Metadata JSON",
+        "tooltip": "Document summary."
+      }
+    }
+  },
+  "ComfyPencilExtractLayer": {
+    "display_name": "Comfy Pencil Extract Layer",
+    "description": "Extract a single layer from a PENCIL_DOCUMENT by name or index.",
+    "outputs": {
+      "0": {
+        "name": "Image",
+        "tooltip": "Selected layer image."
+      },
+      "1": {
+        "name": "Mask",
+        "tooltip": "Selected layer alpha."
+      },
+      "2": {
+        "name": "Layer JSON",
+        "tooltip": "Metadata for the selected layer."
+      }
+    }
+  }
+}

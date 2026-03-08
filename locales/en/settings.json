@@ -1,0 +1,10 @@
+{
+  "ComfyPencil.Settings.AutoSaveMs": {
+    "name": "Studio autosave delay",
+    "tooltip": "How long the studio waits after a paint or layer change before saving to disk."
+  },
+  "ComfyPencil.Settings.ShowNodeButton": {
+    "name": "Show Open Studio button on nodes",
+    "tooltip": "Expose a direct Open Studio button on each Comfy Pencil Studio node."
+  }
+}

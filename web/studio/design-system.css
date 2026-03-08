@@ -1,0 +1,210 @@
+:root {
+  --cp-bg: #111318;
+  --cp-bg-soft: #181b22;
+  --cp-bg-elevated: #1b2129;
+  --cp-bg-card: #252c36;
+  --cp-line: rgba(255, 255, 255, 0.08);
+  --cp-line-strong: rgba(255, 255, 255, 0.14);
+  --cp-text: #f5f7fb;
+  --cp-text-soft: rgba(245, 247, 251, 0.62);
+  --cp-text-dim: rgba(245, 247, 251, 0.42);
+  --cp-accent: #4aa7ff;
+  --cp-accent-2: #7e6dff;
+  --cp-accent-warm: #f6814f;
+  --cp-shadow: 0 36px 80px rgba(0, 0, 0, 0.38);
+  --cp-panel-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+}
+
+.cp-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.cp-button,
+.cp-layer__action,
+.cp-layer__toggle,
+.cp-tool,
+.cp-toolbar__color,
+.cp-color-preview {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.cp-button {
+  padding: 0.72rem 1rem;
+  border-radius: 16px;
+  background: var(--cp-bg-card);
+  color: var(--cp-text);
+  border: 1px solid var(--cp-line);
+  font: 600 0.86rem/1 "SF Pro Display", "Avenir Next", sans-serif;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.cp-button:hover {
+  transform: translateY(-1px);
+  background: #303947;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.cp-button.cp-primary {
+  background: #4b9df8;
+  border-color: rgba(75, 157, 248, 0.9);
+  color: #ffffff;
+}
+
+.cp-button.cp-secondary {
+  background: #566173;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.cp-button.cp-button--ghost {
+  background: var(--cp-bg-elevated);
+  border-color: var(--cp-line);
+  color: var(--cp-text-soft);
+}
+
+.cp-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+
+.cp-button--tiny {
+  padding: 0.44rem 0.72rem;
+  border-radius: 12px;
+  font-size: 0.72rem;
+}
+
+.cp-panel {
+  padding: 1rem;
+  border-radius: 24px;
+  background: var(--cp-bg-elevated);
+  border: 1px solid var(--cp-line);
+  box-shadow: var(--cp-panel-shadow);
+}
+
+.cp-panel h3 {
+  margin: 0 0 0.8rem;
+  font: 700 0.72rem/1 "SF Pro Display", "Avenir Next", sans-serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cp-text-dim);
+}
+
+.cp-control {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.cp-control label,
+.cp-layer__meta,
+.cp-hint {
+  font-size: 0.74rem;
+  color: var(--cp-text-soft);
+}
+
+.cp-panel__row {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cp-control input[type="text"],
+.cp-control input[type="number"],
+.cp-control select,
+.cp-layer__name,
+.cp-layer__mix select {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--cp-line);
+  padding: 0.72rem 0.8rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cp-text);
+  font: 500 0.88rem/1.2 "SF Pro Display", "Avenir Next", sans-serif;
+}
+
+.cp-control input[type="text"]:focus,
+.cp-control input[type="number"]:focus,
+.cp-control select:focus,
+.cp-layer__name:focus,
+.cp-layer__mix select:focus {
+  outline: none;
+  border-color: rgba(74, 167, 255, 0.42);
+}
+
+.cp-control input[type="range"],
+.cp-layer__mix input[type="range"] {
+  width: 100%;
+  appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(74, 167, 255, 0.56), rgba(255, 255, 255, 0.12));
+}
+
+.cp-control input[type="range"]::-webkit-slider-thumb,
+.cp-layer__mix input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.24);
+}
+
+.cp-control input[type="range"]::-moz-range-thumb,
+.cp-layer__mix input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.24);
+}
+
+.cp-layer__badges {
+  display: flex;
+  gap: 0.32rem;
+  flex-wrap: wrap;
+}
+
+.cp-layer__badge {
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--cp-text-soft);
+  font: 600 0.68rem/1 "SF Pro Display", "Avenir Next", sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.cp-layer__badge--accent {
+  background: rgba(74, 167, 255, 0.18);
+  color: var(--cp-text);
+}
+
+.cp-subpanel {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cp-subpanel h4 {
+  margin: 0;
+  font: 700 0.68rem/1 "SF Pro Display", "Avenir Next", sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cp-text-dim);
+}
+
+.cp-subpanel__empty {
+  font-size: 0.76rem;
+  line-height: 1.48;
+  color: var(--cp-text-soft);
+}

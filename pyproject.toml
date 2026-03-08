@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfypencil"
+version = "0.1.0"
+description = "A layered painting studio for ComfyUI with workflow-friendly drawing document nodes."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+
+[tool.comfy]
+PublisherId = "crisbjorndal"
+DisplayName = "ComfyPencil"
+requires-comfyui = ">=0.16.0"
