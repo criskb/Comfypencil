@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 420" role="img" aria-labelledby="title desc">
+  <title id="title">ComfyPencil banner</title>
+  <desc id="desc">A ComfyUI-themed banner for ComfyPencil showing a brush library, a painting canvas, and downstream texture outputs.</desc>
+  <rect width="1400" height="420" fill="#0a0e14"/>
+  <g stroke="#162131" stroke-width="1">
+    <path d="M0 70H1400"/>
+    <path d="M0 140H1400"/>
+    <path d="M0 210H1400"/>
+    <path d="M0 280H1400"/>
+    <path d="M0 350H1400"/>
+    <path d="M100 0V420"/>
+    <path d="M200 0V420"/>
+    <path d="M300 0V420"/>
+    <path d="M400 0V420"/>
+    <path d="M500 0V420"/>
+    <path d="M600 0V420"/>
+    <path d="M700 0V420"/>
+    <path d="M800 0V420"/>
+    <path d="M900 0V420"/>
+    <path d="M1000 0V420"/>
+    <path d="M1100 0V420"/>
+    <path d="M1200 0V420"/>
+    <path d="M1300 0V420"/>
+  </g>
+
+  <rect x="36" y="36" width="1328" height="348" rx="28" fill="#101722" stroke="#243247" stroke-width="2"/>
+
+  <text x="76" y="92" fill="#f3f6fb" font-size="34" font-weight="700" font-family="Segoe UI, Arial, sans-serif">ComfyPencil</text>
+  <text x="76" y="122" fill="#91a4bf" font-size="16" font-weight="500" font-family="Segoe UI, Arial, sans-serif">Layered painting studio for ComfyUI</text>
+
+  <g font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">
+    <rect x="76" y="146" width="110" height="34" rx="17" fill="#1a2433" stroke="#33527f"/>
+    <text x="131" y="168" text-anchor="middle" fill="#dce7f9">Brush Studio</text>
+    <rect x="198" y="146" width="88" height="34" rx="17" fill="#1a2433" stroke="#33527f"/>
+    <text x="242" y="168" text-anchor="middle" fill="#dce7f9">Layers</text>
+    <rect x="298" y="146" width="108" height="34" rx="17" fill="#1a2433" stroke="#33527f"/>
+    <text x="352" y="168" text-anchor="middle" fill="#dce7f9">Split Preview</text>
+    <rect x="418" y="146" width="116" height="34" rx="17" fill="#1a2433" stroke="#33527f"/>
+    <text x="476" y="168" text-anchor="middle" fill="#dce7f9">.pencilstudio</text>
+  </g>
+
+  <g>
+    <rect x="76" y="206" width="246" height="136" rx="22" fill="#0d131d" stroke="#2b3b54"/>
+    <text x="96" y="232" fill="#f3f6fb" font-size="15" font-weight="700" font-family="Segoe UI, Arial, sans-serif">Brush Library</text>
+    <text x="96" y="250" fill="#7d92af" font-size="12" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Preset cards with real stroke previews</text>
+
+    <rect x="96" y="270" width="206" height="22" rx="11" fill="#1d2a3d"/>
+    <path d="M114 281C134 269 157 297 179 286C201 274 224 293 248 281" fill="none" stroke="#d3d8e2" stroke-width="4" stroke-linecap="round"/>
+    <text x="250" y="285" fill="#f3f6fb" font-size="13" font-weight="700" font-family="Segoe UI, Arial, sans-serif">Pencil</text>
+
+    <rect x="96" y="300" width="206" height="22" rx="11" fill="#171f2d"/>
+    <path d="M114 311C134 300 156 320 178 309C201 297 225 318 248 309" fill="none" stroke="#f2f4f7" stroke-width="3" stroke-linecap="round"/>
+    <text x="258" y="315" fill="#cfd8e6" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">Ink</text>
+  </g>
+
+  <g>
+    <rect x="360" y="84" width="520" height="268" rx="24" fill="#141d2b" stroke="#36527e" stroke-width="2"/>
+    <rect x="390" y="114" width="460" height="208" rx="22" fill="#f2efe8"/>
+    <path d="M430 217C470 160 504 163 546 194C591 228 629 225 665 181C704 136 746 136 793 165" fill="none" stroke="#1b1d21" stroke-width="7" stroke-linecap="round"/>
+    <path d="M514 278C557 262 595 267 643 286C690 304 732 302 780 275" fill="none" stroke="#6d8d24" stroke-width="12" stroke-linecap="round" opacity="0.95"/>
+    <path d="M601 152C619 179 631 196 649 214" fill="none" stroke="#cbced3" stroke-width="8" stroke-linecap="round"/>
+    <path d="M694 251C718 220 742 221 764 248" fill="none" stroke="#c6cad2" stroke-width="6" stroke-linecap="round"/>
+    <text x="392" y="72" fill="#7f95b1" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">PAINT. SAVE. FEED THE GRAPH.</text>
+  </g>
+
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <rect x="930" y="84" width="392" height="268" rx="24" fill="#0d131d" stroke="#2a3a53"/>
+    <text x="954" y="112" fill="#f3f6fb" font-size="15" font-weight="700">Workflow Outputs</text>
+    <text x="954" y="130" fill="#7d92af" font-size="12" font-weight="600">Document, downstream preview, and texture maps</text>
+
+    <rect x="954" y="154" width="164" height="48" rx="16" fill="#182233" stroke="#39557f"/>
+    <text x="976" y="173" fill="#7f95b1" font-size="11" font-weight="700">NODE</text>
+    <text x="976" y="191" fill="#f3f6fb" font-size="15" font-weight="700">Comfy Pencil Studio</text>
+
+    <rect x="954" y="216" width="164" height="48" rx="16" fill="#151d2b" stroke="#2d405d"/>
+    <text x="976" y="235" fill="#7f95b1" font-size="11" font-weight="700">NODE</text>
+    <text x="976" y="253" fill="#f3f6fb" font-size="15" font-weight="700">Receive Preview</text>
+
+    <path d="M1128 178H1186" stroke="#4f93ff" stroke-width="4" stroke-linecap="round"/>
+    <path d="M1128 240H1186" stroke="#4f93ff" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="1198" cy="178" r="8" fill="#4f93ff"/>
+    <circle cx="1198" cy="240" r="8" fill="#4f93ff"/>
+    <path d="M1206 178H1238" stroke="#4f93ff" stroke-width="4" stroke-linecap="round"/>
+    <path d="M1206 240H1238" stroke="#4f93ff" stroke-width="4" stroke-linecap="round"/>
+
+    <g font-size="12" font-weight="700">
+      <rect x="1248" y="154" width="50" height="24" rx="12" fill="#243247"/>
+      <text x="1273" y="170" fill="#dce7f9" text-anchor="middle">IMAGE</text>
+      <rect x="1248" y="184" width="50" height="24" rx="12" fill="#243247"/>
+      <text x="1273" y="200" fill="#dce7f9" text-anchor="middle">MASK</text>
+      <rect x="1248" y="216" width="50" height="24" rx="12" fill="#243247"/>
+      <text x="1273" y="232" fill="#dce7f9" text-anchor="middle">HEIGHT</text>
+      <rect x="1248" y="246" width="50" height="24" rx="12" fill="#243247"/>
+      <text x="1273" y="262" fill="#dce7f9" text-anchor="middle">ROUGH</text>
+      <rect x="1248" y="278" width="50" height="24" rx="12" fill="#243247"/>
+      <text x="1273" y="294" fill="#dce7f9" text-anchor="middle">SPEC</text>
+      <rect x="1248" y="308" width="50" height="24" rx="12" fill="#243247"/>
+      <text x="1273" y="324" fill="#dce7f9" text-anchor="middle">LIGHT</text>
+    </g>
+  </g>
+</svg>
