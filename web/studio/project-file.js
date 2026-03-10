@@ -31,7 +31,15 @@ export function validateProjectBundle(bundle) {
   if (!bundle.layerImages || typeof bundle.layerImages !== "object" || Array.isArray(bundle.layerImages)) {
     throw new Error("Project file is missing layer image data.");
   }
-  return bundle;
+  const layerMaterialImages = bundle.layerMaterialImages;
+  if (layerMaterialImages != null && (typeof layerMaterialImages !== "object" || Array.isArray(layerMaterialImages))) {
+    throw new Error("Project file material image data must be an object when provided.");
+  }
+  return {
+    ...bundle,
+    layerImages: { ...bundle.layerImages },
+    layerMaterialImages: { ...(layerMaterialImages || {}) },
+  };
 }
 
 export async function readProjectBundleFile(file) {

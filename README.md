@@ -72,7 +72,10 @@ ComfyPencil currently targets `ComfyUI >= 0.16.0` in [pyproject.toml](pyproject.
 4. If you want live feedback, connect a `Comfy Pencil Receive Preview` node and enable split view.
 5. Save the artwork either as document state in the node storage or as a portable `.pencilstudio` project.
 
-You can start from the included example workflow: [example_workflows/comfypencil_basic.json](example_workflows/comfypencil_basic.json)
+Included examples:
+
+- [example_workflows/comfypencil_basic.json](example_workflows/comfypencil_basic.json)
+- [example_workflows/comfypencil_split_preview.json](example_workflows/comfypencil_split_preview.json)
 
 ## Storage And Project Files
 

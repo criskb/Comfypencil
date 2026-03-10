@@ -1,7 +1,7 @@
 {
   "ComfyPencilStudio": {
     "display_name": "Comfy Pencil Studio",
-    "description": "Open a layered drawing studio, paint directly in ComfyUI, and output the current composite as IMAGE and MASK.",
+    "description": "Open a layered drawing studio, paint directly in ComfyUI, and output the current composite, alpha, and material support maps.",
     "inputs": {
       "document_name": {
         "name": "Document Name",
@@ -14,6 +14,10 @@
       "revision": {
         "name": "Revision",
         "tooltip": "Internal revision value used to invalidate cached execution when the painting changes."
+      },
+      "run_token": {
+        "name": "Run Token",
+        "tooltip": "Internal cache-buster used when the studio queues manual or timed background runs."
       },
       "canvas_width": {
         "name": "Canvas Width",
@@ -34,6 +38,14 @@
       "flatten_background": {
         "name": "Flatten Background",
         "tooltip": "Bake the paper or background image into the IMAGE output."
+      },
+      "document": {
+        "name": "Document",
+        "tooltip": "Optional incoming PENCIL_DOCUMENT to continue editing an existing document payload."
+      },
+      "background_image": {
+        "name": "Background Image",
+        "tooltip": "Optional image used as a background during rendering."
       }
     },
     "outputs": {
@@ -50,6 +62,22 @@
         "tooltip": "Alpha mask of the painted content."
       },
       "3": {
+        "name": "Height",
+        "tooltip": "Derived height map from painted material data."
+      },
+      "4": {
+        "name": "Roughness",
+        "tooltip": "Derived roughness map from painted material data."
+      },
+      "5": {
+        "name": "Specular",
+        "tooltip": "Derived specular map from painted material data."
+      },
+      "6": {
+        "name": "Light",
+        "tooltip": "Derived light or emissive support map from painted material data."
+      },
+      "7": {
         "name": "Metadata JSON",
         "tooltip": "Summary JSON for the current document state."
       }
@@ -58,6 +86,52 @@
   "ComfyPencilImportLayer": {
     "display_name": "Comfy Pencil Import Layer",
     "description": "Push an upstream IMAGE or MASK into a ComfyPencil document as a new layer.",
+    "inputs": {
+      "document": {
+        "name": "Document",
+        "tooltip": "Document payload to update."
+      },
+      "image": {
+        "name": "Image",
+        "tooltip": "Upstream image to import as a layer."
+      },
+      "mask": {
+        "name": "Mask",
+        "tooltip": "Optional alpha mask used when constructing the imported layer."
+      },
+      "layer_name": {
+        "name": "Layer Name",
+        "tooltip": "Name assigned to the imported layer."
+      },
+      "blend_mode": {
+        "name": "Blend Mode",
+        "tooltip": "Blend mode stored on the imported layer."
+      },
+      "opacity": {
+        "name": "Opacity",
+        "tooltip": "Imported layer opacity."
+      },
+      "visible": {
+        "name": "Visible",
+        "tooltip": "Whether the imported layer starts visible."
+      },
+      "placement": {
+        "name": "Placement",
+        "tooltip": "Insert the imported layer at the top or bottom of the stack."
+      },
+      "resize_mode": {
+        "name": "Resize Mode",
+        "tooltip": "How the incoming image is fit to the document size."
+      },
+      "persist_to_source": {
+        "name": "Persist To Source",
+        "tooltip": "When enabled, save the imported layer back into the stored source document."
+      },
+      "flatten_background": {
+        "name": "Flatten Background",
+        "tooltip": "Bake the paper tone into the rendered image output from this node."
+      }
+    },
     "outputs": {
       "0": {
         "name": "Document",
@@ -79,7 +153,21 @@
   },
   "ComfyPencilRenderDocument": {
     "display_name": "Comfy Pencil Render Document",
-    "description": "Render a PENCIL_DOCUMENT into IMAGE and MASK outputs.",
+    "description": "Render a PENCIL_DOCUMENT into image, alpha, and material support maps.",
+    "inputs": {
+      "document": {
+        "name": "Document",
+        "tooltip": "Document payload to render."
+      },
+      "flatten_background": {
+        "name": "Flatten Background",
+        "tooltip": "Bake the paper tone into the image output instead of leaving transparency."
+      },
+      "background_image": {
+        "name": "Background Image",
+        "tooltip": "Optional image used as a background during rendering."
+      }
+    },
     "outputs": {
       "0": {
         "name": "Image",
@@ -90,6 +178,22 @@
         "tooltip": "Document alpha."
       },
       "2": {
+        "name": "Height",
+        "tooltip": "Derived height map."
+      },
+      "3": {
+        "name": "Roughness",
+        "tooltip": "Derived roughness map."
+      },
+      "4": {
+        "name": "Specular",
+        "tooltip": "Derived specular map."
+      },
+      "5": {
+        "name": "Light",
+        "tooltip": "Derived light or emissive support map."
+      },
+      "6": {
         "name": "Metadata JSON",
         "tooltip": "Document summary."
       }
@@ -98,6 +202,20 @@
   "ComfyPencilExtractLayer": {
     "display_name": "Comfy Pencil Extract Layer",
     "description": "Extract a single layer from a PENCIL_DOCUMENT by name or index.",
+    "inputs": {
+      "document": {
+        "name": "Document",
+        "tooltip": "Document payload containing the layer."
+      },
+      "layer_name": {
+        "name": "Layer Name",
+        "tooltip": "Exact layer name to extract. Takes priority over layer index when set."
+      },
+      "layer_index": {
+        "name": "Layer Index",
+        "tooltip": "Layer index to extract. Use -1 for the active layer."
+      }
+    },
     "outputs": {
       "0": {
         "name": "Image",
@@ -110,6 +228,38 @@
       "2": {
         "name": "Layer JSON",
         "tooltip": "Metadata for the selected layer."
+      }
+    }
+  },
+  "ComfyPencilReceivePreview": {
+    "display_name": "Comfy Pencil Receive Preview",
+    "description": "Store a downstream IMAGE as the split-view preview artboard for a studio document.",
+    "inputs": {
+      "document": {
+        "name": "Document",
+        "tooltip": "Studio document payload used to resolve the split-preview target."
+      },
+      "image": {
+        "name": "Image",
+        "tooltip": "Processed downstream image to show back inside the studio split preview."
+      },
+      "resize_mode": {
+        "name": "Resize Mode",
+        "tooltip": "How the incoming image is fit into the document dimensions before storage."
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "Document",
+        "tooltip": "Pass-through document payload."
+      },
+      "1": {
+        "name": "Image",
+        "tooltip": "Pass-through image payload."
+      },
+      "2": {
+        "name": "Status",
+        "tooltip": "Human-readable receiver status message."
       }
     }
   }

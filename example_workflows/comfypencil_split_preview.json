@@ -1,6 +1,6 @@
 {
-  "last_node_id": 6,
-  "last_link_id": 5,
+  "last_node_id": 5,
+  "last_link_id": 4,
   "nodes": [
     {
       "id": 1,
@@ -13,7 +13,7 @@
       "inputs": [],
       "outputs": [
         { "name": "document", "type": "PENCIL_DOCUMENT", "links": [1, 2] },
-        { "name": "image", "type": "IMAGE", "links": [3] },
+        { "name": "image", "type": "IMAGE", "links": null },
         { "name": "mask", "type": "MASK", "links": null },
         { "name": "height", "type": "IMAGE", "links": null },
         { "name": "roughness", "type": "IMAGE", "links": null },
@@ -25,7 +25,7 @@
         "Node name for S&R": "ComfyPencilStudio"
       },
       "widgets_values": [
-        "ComfyPencil Demo",
+        "ComfyPencil Split Preview",
         "",
         0,
         0,
@@ -48,9 +48,9 @@
         { "name": "document", "type": "PENCIL_DOCUMENT", "link": 1 }
       ],
       "outputs": [
-        { "name": "image", "type": "IMAGE", "links": [4] },
+        { "name": "image", "type": "IMAGE", "links": [3] },
         { "name": "mask", "type": "MASK", "links": null },
-        { "name": "height", "type": "IMAGE", "links": [5] },
+        { "name": "height", "type": "IMAGE", "links": [4] },
         { "name": "roughness", "type": "IMAGE", "links": null },
         { "name": "specular", "type": "IMAGE", "links": null },
         { "name": "light", "type": "IMAGE", "links": null },
@@ -63,49 +63,33 @@
     },
     {
       "id": 3,
-      "type": "ComfyPencilExtractLayer",
-      "pos": [560, 280],
-      "size": [300, 120],
+      "type": "ComfyPencilReceivePreview",
+      "pos": [940, 80],
+      "size": [280, 110],
       "flags": {},
       "order": 2,
       "mode": 0,
       "inputs": [
-        { "name": "document", "type": "PENCIL_DOCUMENT", "link": 2 }
+        { "name": "document", "type": "PENCIL_DOCUMENT", "link": 2 },
+        { "name": "image", "type": "IMAGE", "link": 4 }
       ],
       "outputs": [
+        { "name": "document", "type": "PENCIL_DOCUMENT", "links": null },
         { "name": "image", "type": "IMAGE", "links": null },
-        { "name": "mask", "type": "MASK", "links": null },
-        { "name": "layer_json", "type": "STRING", "links": null }
+        { "name": "status", "type": "STRING", "links": null }
       ],
       "properties": {
-        "Node name for S&R": "ComfyPencilExtractLayer"
+        "Node name for S&R": "ComfyPencilReceivePreview"
       },
-      "widgets_values": ["", -1]
+      "widgets_values": ["fit"]
     },
     {
       "id": 4,
       "type": "PreviewImage",
-      "pos": [980, 80],
+      "pos": [940, 240],
       "size": [210, 246],
       "flags": {},
       "order": 3,
-      "mode": 0,
-      "inputs": [
-        { "name": "images", "type": "IMAGE", "link": 4 }
-      ],
-      "outputs": [],
-      "properties": {
-        "Node name for S&R": "PreviewImage"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 5,
-      "type": "PreviewImage",
-      "pos": [980, 360],
-      "size": [210, 246],
-      "flags": {},
-      "order": 4,
       "mode": 0,
       "inputs": [
         { "name": "images", "type": "IMAGE", "link": 3 }
@@ -117,15 +101,15 @@
       "widgets_values": []
     },
     {
-      "id": 6,
+      "id": 5,
       "type": "PreviewImage",
-      "pos": [1220, 80],
+      "pos": [1180, 240],
       "size": [210, 246],
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [
-        { "name": "images", "type": "IMAGE", "link": 5 }
+        { "name": "images", "type": "IMAGE", "link": 4 }
       ],
       "outputs": [],
       "properties": {
@@ -137,16 +121,15 @@
   "links": [
     [1, 1, 0, 2, 0, "PENCIL_DOCUMENT"],
     [2, 1, 0, 3, 0, "PENCIL_DOCUMENT"],
-    [3, 1, 1, 5, 0, "IMAGE"],
-    [4, 2, 0, 4, 0, "IMAGE"],
-    [5, 2, 2, 6, 0, "IMAGE"]
+    [3, 2, 0, 4, 0, "IMAGE"],
+    [4, 2, 2, 3, 1, "IMAGE"]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.82,
-      "offset": [92, 70]
+      "scale": 0.86,
+      "offset": [80, 64]
     }
   },
   "version": 0.4

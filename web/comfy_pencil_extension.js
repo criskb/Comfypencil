@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { ComfyDialog } from "/scripts/ui.js";
 
 import { COMMANDS, EXTENSION_NAME, SIDEBAR_TAB_ID, STUDIO_NODE_ID } from "./studio/constants.js";
 import { ComfyPencilStudioOverlay } from "./studio/studio-app.js";
@@ -7,12 +8,20 @@ const SIDEBAR_ICON_STYLE_ID = "comfypencil-sidebar-icon-style";
 const BRUSH_ICON_URL = new URL("./icons/brush.svg", import.meta.url).href;
 
 let overlay = null;
+let noticeDialog = null;
 
 function getOverlay() {
   if (!overlay) {
     overlay = new ComfyPencilStudioOverlay();
   }
   return overlay;
+}
+
+function showNotice(message) {
+  if (!noticeDialog) {
+    noticeDialog = new ComfyDialog();
+  }
+  noticeDialog.show(String(message || "").trim() || "Comfy Pencil");
 }
 
 function hideWidget(widget) {
@@ -42,7 +51,7 @@ function getAutoSaveMs() {
 
 async function openStudioForNode(node) {
   if (!node) {
-    alert("Select a Comfy Pencil Studio node first.");
+    showNotice("Select a Comfy Pencil Studio node first.");
     return;
   }
   await getOverlay().openForNode(node, {
@@ -138,8 +147,23 @@ function renderSidebarLauncher(element) {
   };
 
   renderNodes();
-  const interval = window.setInterval(renderNodes, 1200);
-  element.__comfypencilCleanup = () => window.clearInterval(interval);
+  const tick = () => {
+    if (document.hidden || !container.isConnected) {
+      return;
+    }
+    renderNodes();
+  };
+  const onVisibilityChange = () => {
+    if (!document.hidden && container.isConnected) {
+      renderNodes();
+    }
+  };
+  const interval = window.setInterval(tick, 1200);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  element.__comfypencilCleanup = () => {
+    window.clearInterval(interval);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+  };
 }
 
 function ensureSidebarIconStyles() {
