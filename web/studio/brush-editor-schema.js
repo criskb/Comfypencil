@@ -1,4 +1,12 @@
 import { BRUSH_PRESETS } from "./constants.js";
+import {
+  BRUSH_TEXTURE_CUSTOM,
+  BRUSH_TEXTURE_NONE,
+  describeBrushTextureSelection,
+  getBrushTextureOptions,
+  getBrushTextureSelectionValue,
+  hasAssignedBrushTexture,
+} from "./brush-textures.js";
 import { formatLibraryGroupLabel, formatPercent, isStrokeTool } from "./studio-helpers.js";
 
 const FIRST_PRESET = BRUSH_PRESETS[0] || {};
@@ -382,6 +390,34 @@ export const BRUSH_EDITOR_CONTROLS = [
     visible: isOneOf(STROKE_TOOL_SET),
   },
   {
+    key: "shapeTextureSelection",
+    label: "Shape Texture",
+    section: "shape",
+    type: "texture",
+    textureKind: "shape",
+    options: () => getBrushTextureOptions("shape"),
+    initial: BRUSH_TEXTURE_NONE,
+    getValue: (brush) => getBrushTextureSelectionValue("shape", brush),
+    format: (_value, brush) => describeBrushTextureSelection("shape", brush).label,
+    visible: isOneOf(STROKE_TOOL_SET),
+    commit: (value) => ({
+      shapeTextureId: value === BRUSH_TEXTURE_NONE || value === BRUSH_TEXTURE_CUSTOM ? "" : value,
+      shapeTextureData: value === BRUSH_TEXTURE_CUSTOM ? undefined : "",
+    }),
+  },
+  {
+    key: "shapeTextureScale",
+    label: "Texture Scale",
+    section: "shape",
+    type: "range",
+    min: 0.35,
+    max: 2.5,
+    step: 0.01,
+    initial: FIRST_PRESET.shapeTextureScale ?? 1,
+    format: formatMultiplier,
+    visible: (brush) => isOneOf(STROKE_TOOL_SET)(brush) && hasAssignedBrushTexture("shape", brush),
+  },
+  {
     key: "roundness",
     label: "Roundness",
     section: "shape",
@@ -476,6 +512,22 @@ export const BRUSH_EDITOR_CONTROLS = [
     initial: FIRST_PRESET.density ?? 0.55,
     format: formatPercent,
     visible: isOneOf(STROKE_TOOL_SET),
+  },
+  {
+    key: "grainTextureSelection",
+    label: "Grain Texture",
+    section: "grain",
+    type: "texture",
+    textureKind: "grain",
+    options: () => getBrushTextureOptions("grain"),
+    initial: BRUSH_TEXTURE_NONE,
+    getValue: (brush) => getBrushTextureSelectionValue("grain", brush),
+    format: (_value, brush) => describeBrushTextureSelection("grain", brush).label,
+    visible: isOneOf(STROKE_TOOL_SET),
+    commit: (value) => ({
+      grainTextureId: value === BRUSH_TEXTURE_NONE || value === BRUSH_TEXTURE_CUSTOM ? "" : value,
+      grainTextureData: value === BRUSH_TEXTURE_CUSTOM ? undefined : "",
+    }),
   },
   {
     key: "grain",
@@ -1081,9 +1133,12 @@ export function getBrushEditorControlValue(definition, brush) {
   return value;
 }
 
-export function getBrushEditorControlPatch(definition, rawValue) {
+export function getBrushEditorControlPatch(definition, rawValue, brush) {
   if (typeof definition.commit === "function") {
-    return definition.commit(rawValue);
+    const patch = definition.commit(rawValue, brush);
+    return Object.fromEntries(
+      Object.entries(patch || {}).filter(([, value]) => value !== undefined),
+    );
   }
   if (definition.type === "range") {
     const numeric = Number(rawValue);

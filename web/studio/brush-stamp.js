@@ -12,6 +12,16 @@ import {
   rgbToHex,
   rgbToHsv,
 } from "./brush-utils.js";
+import {
+  drawBrushShapeTexture,
+  getResolvedBrushTexture,
+  sampleBrushTexture,
+} from "./brush-textures.js";
+
+const colorStampBuffer = document.createElement("canvas");
+const colorStampBufferCtx = colorStampBuffer.getContext("2d", { willReadFrequently: true });
+const materialStampBuffer = document.createElement("canvas");
+const materialStampBufferCtx = materialStampBuffer.getContext("2d", { willReadFrequently: true });
 
 function resolveStrokeAngle(stroke, point) {
   return angleFromPoints(stroke?.lastRenderedPoint || stroke?.lastPoint || stroke?.startPoint, point, stroke?.lastAngle ?? 0);
@@ -43,6 +53,85 @@ export function packBrushMaterial(brush, alpha = 1) {
   };
 }
 
+function ensureStampBuffer(buffer, size) {
+  const nextSize = Math.max(8, Math.ceil(size));
+  if (buffer.width !== nextSize) {
+    buffer.width = nextSize;
+  }
+  if (buffer.height !== nextSize) {
+    buffer.height = nextSize;
+  }
+  return nextSize;
+}
+
+function createStampMaskGradient(ctx, center, innerRadius, outerRadius, hardness) {
+  const gradient = ctx.createRadialGradient(center, center, innerRadius, center, center, outerRadius);
+  gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+  gradient.addColorStop(clamp(hardness, 0.02, 0.98), "rgba(255, 255, 255, 0.92)");
+  gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+  return gradient;
+}
+
+function drawTexturedColorStamp(ctx, {
+  texture,
+  shapeTextureScale,
+  stampRadius,
+  innerRadius,
+  workingHardness,
+  stampColorHex,
+  stampAlphaLocal,
+  compositeOperation,
+}) {
+  const size = ensureStampBuffer(colorStampBuffer, (stampRadius * 2) + 6);
+  const center = size / 2;
+  colorStampBufferCtx.clearRect(0, 0, size, size);
+  drawBrushShapeTexture(colorStampBufferCtx, texture, size, shapeTextureScale);
+  colorStampBufferCtx.globalCompositeOperation = "destination-in";
+  colorStampBufferCtx.fillStyle = createStampMaskGradient(colorStampBufferCtx, center, innerRadius, stampRadius, workingHardness);
+  colorStampBufferCtx.fillRect(0, 0, size, size);
+  colorStampBufferCtx.globalCompositeOperation = "source-in";
+  colorStampBufferCtx.fillStyle = rgbaFromHex(stampColorHex, stampAlphaLocal);
+  colorStampBufferCtx.fillRect(0, 0, size, size);
+  colorStampBufferCtx.globalCompositeOperation = "source-over";
+
+  ctx.globalCompositeOperation = compositeOperation;
+  ctx.drawImage(colorStampBuffer, -center, -center);
+}
+
+function drawTexturedMaterialStamp(materialCtx, {
+  brush,
+  texture,
+  shapeTextureScale,
+  stampRadius,
+  innerRadius,
+  workingHardness,
+  stampAlphaLocal,
+}) {
+  const size = ensureStampBuffer(materialStampBuffer, (stampRadius * 2) + 6);
+  const center = size / 2;
+  materialStampBufferCtx.clearRect(0, 0, size, size);
+  drawBrushShapeTexture(materialStampBufferCtx, texture, size, shapeTextureScale);
+  materialStampBufferCtx.globalCompositeOperation = "destination-in";
+  materialStampBufferCtx.fillStyle = createStampMaskGradient(materialStampBufferCtx, center, innerRadius, stampRadius, workingHardness);
+  materialStampBufferCtx.fillRect(0, 0, size, size);
+  materialStampBufferCtx.globalCompositeOperation = "source-in";
+
+  if (brush.tool === "eraser") {
+    materialStampBufferCtx.fillStyle = rgbaFromChannels(255, 255, 255, stampAlphaLocal);
+  } else {
+    const materialPixel = packBrushMaterial(brush, stampAlphaLocal);
+    materialStampBufferCtx.fillStyle = rgbaFromChannels(
+      materialPixel.r,
+      materialPixel.g,
+      materialPixel.b,
+      materialPixel.a / 255,
+    );
+  }
+  materialStampBufferCtx.fillRect(0, 0, size, size);
+  materialStampBufferCtx.globalCompositeOperation = "source-over";
+  materialCtx.drawImage(materialStampBuffer, -center, -center);
+}
+
 function grainSampleForBrush(brush, point, travel, stampIndex) {
   const grainMovement = String(brush.grainMovement || "rolling");
   const grainScale = clamp(brush.grainScale ?? 0.45, 0, 1);
@@ -53,6 +142,14 @@ function grainSampleForBrush(brush, point, travel, stampIndex) {
   const y = grainMovement === "drift"
     ? (point.y / scale) + (travel / (10 + grainScale * 22))
     : point.y / (grainMovement === "static" ? scale : scale * 2.2);
+  const grainTexture = getResolvedBrushTexture(brush, "grain");
+  if (grainTexture) {
+    return sampleBrushTexture(
+      grainTexture,
+      x + (stampIndex * 0.013),
+      y + (stampIndex * 0.007),
+    );
+  }
   return noise2d(x + stampIndex * 0.73, y + stampIndex * 0.29, grainScale * 17);
 }
 
@@ -263,6 +360,8 @@ export function stampBrushDab(ctx, {
   const materialShine = clamp(brush.materialShine ?? 0, 0, 1);
   const materialRoughness = clamp(brush.materialRoughness ?? 0.5, 0, 1);
   const tiltOpacity = clamp(brush.tiltOpacity ?? 0, 0, 1);
+  const shapeTexture = getResolvedBrushTexture(brush, "shape");
+  const shapeTextureScale = clamp(brush.shapeTextureScale ?? 1, 0.35, 2.5);
 
   for (let index = 0; index < stampCount; index += 1) {
     const angleNoise = initial && index === 0
@@ -321,15 +420,28 @@ export function stampBrushDab(ctx, {
     ctx.translate(stampX, stampY);
     ctx.rotate(stampAngle);
     ctx.scale(1, stampRoundness);
-    const gradient = ctx.createRadialGradient(0, 0, innerRadius, 0, 0, stampRadius);
-    gradient.addColorStop(0, rgbaFromHex(stampColorHex, stampAlphaLocal));
-    gradient.addColorStop(clamp(workingHardness, 0.02, 0.98), rgbaFromHex(stampColorHex, stampAlphaLocal * 0.92));
-    gradient.addColorStop(1, rgbaFromHex(stampColorHex, 0));
-    ctx.globalCompositeOperation = compositeOperation;
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(0, 0, stampRadius, 0, Math.PI * 2);
-    ctx.fill();
+    if (shapeTexture) {
+      drawTexturedColorStamp(ctx, {
+        texture: shapeTexture,
+        shapeTextureScale,
+        stampRadius,
+        innerRadius,
+        workingHardness,
+        stampColorHex,
+        stampAlphaLocal,
+        compositeOperation,
+      });
+    } else {
+      const gradient = ctx.createRadialGradient(0, 0, innerRadius, 0, 0, stampRadius);
+      gradient.addColorStop(0, rgbaFromHex(stampColorHex, stampAlphaLocal));
+      gradient.addColorStop(clamp(workingHardness, 0.02, 0.98), rgbaFromHex(stampColorHex, stampAlphaLocal * 0.92));
+      gradient.addColorStop(1, rgbaFromHex(stampColorHex, 0));
+      ctx.globalCompositeOperation = compositeOperation;
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(0, 0, stampRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     if (wetEdges > 0.02 && compositeOperation === "source-over") {
       const edgeGradient = ctx.createRadialGradient(0, 0, stampRadius * 0.62, 0, 0, stampRadius * 1.04);
@@ -375,25 +487,37 @@ export function stampBrushDab(ctx, {
       materialCtx.scale(1, stampRoundness);
       materialCtx.globalCompositeOperation = brush.tool === "eraser" ? "destination-out" : "source-over";
 
-      const materialGradient = materialCtx.createRadialGradient(0, 0, innerRadius, 0, 0, stampRadius);
-      if (brush.tool === "eraser") {
-        materialGradient.addColorStop(0, rgbaFromChannels(255, 255, 255, stampAlphaLocal));
-        materialGradient.addColorStop(clamp(workingHardness, 0.02, 0.98), rgbaFromChannels(255, 255, 255, stampAlphaLocal * 0.92));
-        materialGradient.addColorStop(1, rgbaFromChannels(255, 255, 255, 0));
+      if (shapeTexture) {
+        drawTexturedMaterialStamp(materialCtx, {
+          brush,
+          texture: shapeTexture,
+          shapeTextureScale,
+          stampRadius,
+          innerRadius,
+          workingHardness,
+          stampAlphaLocal,
+        });
       } else {
-        const materialPixel = packBrushMaterial(brush, stampAlphaLocal);
-        const materialAlpha = materialPixel.a / 255;
-        materialGradient.addColorStop(0, rgbaFromChannels(materialPixel.r, materialPixel.g, materialPixel.b, materialAlpha));
-        materialGradient.addColorStop(
-          clamp(workingHardness, 0.02, 0.98),
-          rgbaFromChannels(materialPixel.r, materialPixel.g, materialPixel.b, materialAlpha * 0.94),
-        );
-        materialGradient.addColorStop(1, rgbaFromChannels(materialPixel.r, materialPixel.g, materialPixel.b, 0));
+        const materialGradient = materialCtx.createRadialGradient(0, 0, innerRadius, 0, 0, stampRadius);
+        if (brush.tool === "eraser") {
+          materialGradient.addColorStop(0, rgbaFromChannels(255, 255, 255, stampAlphaLocal));
+          materialGradient.addColorStop(clamp(workingHardness, 0.02, 0.98), rgbaFromChannels(255, 255, 255, stampAlphaLocal * 0.92));
+          materialGradient.addColorStop(1, rgbaFromChannels(255, 255, 255, 0));
+        } else {
+          const materialPixel = packBrushMaterial(brush, stampAlphaLocal);
+          const materialAlpha = materialPixel.a / 255;
+          materialGradient.addColorStop(0, rgbaFromChannels(materialPixel.r, materialPixel.g, materialPixel.b, materialAlpha));
+          materialGradient.addColorStop(
+            clamp(workingHardness, 0.02, 0.98),
+            rgbaFromChannels(materialPixel.r, materialPixel.g, materialPixel.b, materialAlpha * 0.94),
+          );
+          materialGradient.addColorStop(1, rgbaFromChannels(materialPixel.r, materialPixel.g, materialPixel.b, 0));
+        }
+        materialCtx.fillStyle = materialGradient;
+        materialCtx.beginPath();
+        materialCtx.arc(0, 0, stampRadius, 0, Math.PI * 2);
+        materialCtx.fill();
       }
-      materialCtx.fillStyle = materialGradient;
-      materialCtx.beginPath();
-      materialCtx.arc(0, 0, stampRadius, 0, Math.PI * 2);
-      materialCtx.fill();
       materialCtx.restore();
     }
 

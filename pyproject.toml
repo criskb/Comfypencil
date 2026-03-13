@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comfypencil"
-version = "0.1.0"
+version = "2.0.0"
 description = "A layered painting studio for ComfyUI with workflow-friendly drawing document nodes."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 keywords = ["comfyui", "painting", "drawing", "image-editing", "textures"]
 classifiers = [
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
@@ -20,14 +20,52 @@ classifiers = [
   "Environment :: GPU",
   "Topic :: Multimedia :: Graphics :: Editors :: Raster-Based",
 ]
-dependencies = []
+dependencies = [
+  "comfyui-frontend-package>=1.41,<2",
+]
 
 [project.urls]
 Repository = "https://github.com/criskb/Comfypencil"
 Homepage = "https://github.com/criskb/Comfypencil"
 Issues = "https://github.com/criskb/Comfypencil/issues"
+Documentation = "https://github.com/criskb/Comfypencil#readme"
+
+[tool.setuptools]
+include-package-data = true
+packages = [
+  "comfypencil",
+  "comfypencil.assets",
+  "comfypencil.backend",
+  "comfypencil.example_workflows",
+  "comfypencil.locales",
+  "comfypencil.locales.en",
+  "comfypencil.web",
+  "comfypencil.web.docs",
+  "comfypencil.web.icons",
+  "comfypencil.web.studio",
+]
+
+[tool.setuptools.package-dir]
+comfypencil = "."
+"comfypencil.backend" = "backend"
+
+[tool.setuptools.package-data]
+comfypencil = [
+  "assets/*.svg",
+  "example_workflows/*.json",
+  "example_workflows/*.png",
+  "locales/*/*.json",
+  "web/*.js",
+  "web/*/*.css",
+  "web/*/*.js",
+  "web/*/*.json",
+  "web/*/*.md",
+  "web/*/*.svg",
+]
 
 [tool.comfy]
 PublisherId = "crisbjorndal"
 DisplayName = "ComfyPencil"
+Icon = "https://raw.githubusercontent.com/criskb/Comfypencil/main/web/icons/brush.svg"
+Banner = "https://raw.githubusercontent.com/criskb/Comfypencil/main/assets/comfypencil-registry-banner.svg"
 requires-comfyui = ">=0.16.0"

@@ -9,6 +9,12 @@ import {
   sampleCanvasColor,
 } from "./brush-preview.js";
 import {
+  createBrushPresetLibraryBlob,
+  getBrushPresetLibraryFilename,
+  mergeImportedBrushPresets,
+  readBrushPresetLibraryFile,
+} from "./brush-preset-files.js";
+import {
   buildBrushPresetFromBrush,
   isBuiltInBrushPresetId,
   loadCustomBrushPresets,
@@ -28,9 +34,31 @@ import {
   isBrushEditorControlVisible,
 } from "./brush-editor-schema.js";
 import { stampBrushDab } from "./brush-stamp.js";
+import {
+  BRUSH_TEXTURE_CUSTOM,
+  BRUSH_TEXTURE_NONE,
+  describeBrushTextureSelection,
+  normalizeUploadedBrushTexture,
+  prepareBrushTextureState,
+} from "./brush-textures.js";
 import { CanvasEngine } from "./canvas-engine.js";
 import { ColorWheelControl } from "./color-wheel.js";
 import { createProjectBundleBlob, getProjectBundleFilename, readProjectBundleFile } from "./project-file.js";
+import {
+  buildRecoveryDraftDocument,
+  clearRecoveryDraft,
+  loadRecoveryDraft,
+  saveRecoveryDraft,
+  shouldOfferRecoveryDraft,
+} from "./studio-recovery.js";
+import {
+  createColorPaletteBlob,
+  getColorPaletteFilename,
+  loadCustomPaletteColors,
+  normalizePaletteColors,
+  readColorPaletteFile,
+  saveCustomPaletteColors,
+} from "./color-palettes.js";
 import {
   API_PREFIX,
   BLEND_MODES,
@@ -42,6 +70,7 @@ import {
   TOOL_DESCRIPTIONS,
   TOOLS,
 } from "./constants.js";
+import { STUDIO_SHORTCUT_SECTIONS } from "./studio-shortcuts.js";
 import {
   button,
   createField,
@@ -116,6 +145,36 @@ function wrapCanvasText(ctx, text, maxWidth, maxLines = 2) {
   }
   truncated[maxLines - 1] = `${truncated[maxLines - 1].replace(/[.,;:!?\\s]+$/u, "")}…`;
   return truncated;
+}
+
+function normalizePresetComparableValue(value) {
+  if (typeof value === "number") {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Number(numeric.toFixed(6)) : value;
+  }
+  return value ?? "";
+}
+
+function brushPresetEntriesEqual(leftPreset, rightPreset) {
+  if (!leftPreset || !rightPreset) {
+    return false;
+  }
+
+  const keySet = new Set([...Object.keys(leftPreset), ...Object.keys(rightPreset)]);
+  for (const key of keySet) {
+    if (["id", "label", "libraryGroup"].includes(key)) {
+      continue;
+    }
+    if (normalizePresetComparableValue(leftPreset[key]) !== normalizePresetComparableValue(rightPreset[key])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function eventHasFilePayload(event) {
+  const types = Array.from(event?.dataTransfer?.types || []);
+  return types.includes("Files");
 }
 
 function createHistoryIcon(direction) {
@@ -220,9 +279,14 @@ export class ComfyPencilStudioOverlay {
     this.isOpen = false;
     this.ignoreEngineChanges = false;
     this.autoSaveMs = 900;
+    this.recoveryEnabled = true;
     this.needsSave = false;
+    this.pendingRecoveryTimer = 0;
+    this.documentMutationVersion = 0;
     this.showCanvasGuides = true;
     this.brushEditorOpen = false;
+    this.helpOverlayOpen = false;
+    this.activeRecoveryDraft = null;
     this.panelState = {
       brushLibrary: false,
       layers: false,
@@ -243,6 +307,7 @@ export class ComfyPencilStudioOverlay {
     this.streamRuntimeBound = false;
     this.streamPreviewRequestId = 0;
     this.quickMenuOpen = false;
+    this.dragFileDepth = 0;
     this.lastPointerClient = {
       x: Math.round(window.innerWidth / 2),
       y: Math.round(window.innerHeight / 2),
@@ -263,6 +328,7 @@ export class ComfyPencilStudioOverlay {
     };
     this.sidebarPosition = 152;
     this.colorHistory = [];
+    this.customPaletteColors = loadCustomPaletteColors();
     this.previousColor = "#ffffff";
     this.lastSyncedBrushColor = "";
     this.panelButtons = {};
@@ -338,6 +404,10 @@ export class ComfyPencilStudioOverlay {
         <div class="cp-quick-menu" hidden></div>
         <aside class="cp-inspector"></aside>
       </div>
+      <div class="cp-drop-zone" hidden>
+        <div class="cp-drop-zone__title">Drop Into Studio</div>
+        <div class="cp-drop-zone__copy">Images become layers. Project files, brush libraries, and color palettes import directly.</div>
+      </div>
     `;
     document.body.appendChild(this.root);
 
@@ -360,6 +430,7 @@ export class ComfyPencilStudioOverlay {
     this.canvas = this.root.querySelector(".cp-stage__canvas");
     this.quickMenu = this.root.querySelector(".cp-quick-menu");
     this.inspector = this.root.querySelector(".cp-inspector");
+    this.dropZone = this.root.querySelector(".cp-drop-zone");
     this.toolChip = this.root.querySelector('[data-chip="tool"]');
     this.layerChip = this.root.querySelector('[data-chip="layer"]');
     this.zoomChip = this.root.querySelector('[data-chip="zoom"]');
@@ -395,13 +466,15 @@ export class ComfyPencilStudioOverlay {
     this.#buildToolbar();
     this.#buildInspector();
     this.#buildQuickMenu();
+    this.#buildRecoveryPrompt();
+    this.#buildHelpOverlay();
     this.#bindEvents();
     this.bindIncomingStreamRuntime();
     this.syncIncomingStreamControls();
     this.refreshPanelVisibility();
   }
 
-  async openForNode(node, { autoSaveMs = 900 } = {}) {
+  async openForNode(node, { autoSaveMs = 900, recoveryEnabled = true } = {}) {
     if (this.isOpen && this.node && this.node !== node) {
       try {
         await this.saveNow();
@@ -411,11 +484,17 @@ export class ComfyPencilStudioOverlay {
     }
     this.node = node;
     this.autoSaveMs = autoSaveMs;
+    this.recoveryEnabled = recoveryEnabled !== false;
     this.isOpen = true;
     this.closeBrushEditor();
+    this.toggleHelpOverlay(false);
+    this.hideRecoveryPrompt();
+    this.resetDropZoneState();
     this.splitViewEnabled = false;
     await this.stopIncomingStreamAutoRun({ interrupt: false, silent: true });
     this.stopIncomingStreamPolling();
+    window.clearTimeout(this.pendingRecoveryTimer);
+    this.pendingRecoveryTimer = 0;
     this.incomingStreamState = {
       connected: false,
       sourceNodeId: 0,
@@ -441,8 +520,10 @@ export class ComfyPencilStudioOverlay {
     await this.engine.loadDocument(document);
     this.ignoreEngineChanges = false;
     this.needsSave = false;
+    this.documentMutationVersion = 0;
     this.colorWheel.setHex(this.engine.brush.color, { silent: true });
     this.refreshAll();
+    await this.checkRecoveryDraft(document);
     this.setStatus(`Ready · ${document.layers.length} layer${document.layers.length === 1 ? "" : "s"}`);
     this.nameInput.focus({ preventScroll: true });
   }
@@ -453,6 +534,11 @@ export class ComfyPencilStudioOverlay {
     }
     window.clearTimeout(this.pendingSaveTimer);
     this.pendingSaveTimer = 0;
+    window.clearTimeout(this.pendingRecoveryTimer);
+    this.pendingRecoveryTimer = 0;
+    if (this.needsSave) {
+      await this.persistRecoveryDraft().catch(() => {});
+    }
     if (this.savingPromise) {
       try {
         await this.savingPromise;
@@ -463,6 +549,9 @@ export class ComfyPencilStudioOverlay {
     this.isOpen = false;
     this.root.classList.remove("cp-open");
     this.closeBrushEditor();
+    this.toggleHelpOverlay(false);
+    this.hideRecoveryPrompt();
+    this.resetDropZoneState();
     await this.stopIncomingStreamAutoRun({ interrupt: false, silent: true });
     this.toggleInterfaceHidden(false);
     this.toggleSplitView(false);
@@ -486,17 +575,38 @@ export class ComfyPencilStudioOverlay {
       return;
     }
 
+    window.clearTimeout(this.pendingSaveTimer);
+    this.pendingSaveTimer = 0;
+    window.clearTimeout(this.pendingRecoveryTimer);
+    this.pendingRecoveryTimer = 0;
+
     const payloadDocument = this.engine.serializeDocument();
     const layerImages = this.engine.takeDirtyLayerPayloads();
 
     this.setStatus("Saving");
+    const saveVersion = this.documentMutationVersion;
     this.savingPromise = saveDocument(documentId, payloadDocument, layerImages)
       .then((savedDocument) => {
-        this.engine.markSaved(savedDocument);
-        this.#syncNodeWidgets(savedDocument);
-        this.refreshAll();
-        this.needsSave = false;
-        this.setStatus(`Saved · rev ${savedDocument.revision}`);
+        this.ignoreEngineChanges = true;
+        try {
+          this.engine.markSaved(savedDocument);
+          this.#syncNodeWidgets(savedDocument);
+          this.refreshAll();
+        } finally {
+          this.ignoreEngineChanges = false;
+        }
+        const hasNewerChanges = this.documentMutationVersion !== saveVersion;
+        this.needsSave = hasNewerChanges;
+        if (hasNewerChanges) {
+          this.setStatus(`Saved · rev ${savedDocument.revision} · newer changes pending`);
+          window.clearTimeout(this.pendingSaveTimer);
+          this.pendingSaveTimer = window.setTimeout(() => {
+            this.saveNow().catch(() => {});
+          }, this.autoSaveMs);
+        } else {
+          this.setStatus(`Saved · rev ${savedDocument.revision}`);
+          this.clearRecoveryDraft().catch(() => {});
+        }
       })
       .catch((error) => {
         this.setStatus(`Save failed · ${error.message}`);
@@ -518,6 +628,7 @@ export class ComfyPencilStudioOverlay {
     const project = await exportProject(documentId);
     const blob = createProjectBundleBlob(project);
     downloadBlob(blob, getProjectBundleFilename(project.document?.name || this.engine.document?.name || "untitled_sketch"));
+    this.clearRecoveryDraft().catch(() => {});
     this.setStatus(`Project exported · ${project.document?.name || "Untitled Sketch"}`);
   }
 
@@ -538,7 +649,249 @@ export class ComfyPencilStudioOverlay {
     this.colorWheel.setHex(this.engine.brush.color, { silent: true });
     this.#syncNodeWidgets(importedDocument);
     this.refreshAll();
+    this.documentMutationVersion = 0;
+    await this.clearRecoveryDraft();
+    await this.checkRecoveryDraft(importedDocument);
     this.setStatus(`Project opened · ${importedDocument.name} · ${importedDocument.layers.length} layer${importedDocument.layers.length === 1 ? "" : "s"}`);
+  }
+
+  getRecoveryScope(document = this.engine?.document) {
+    return {
+      nodeId: this.node?.id || "",
+      documentId: document?.id || "",
+    };
+  }
+
+  scheduleRecoveryDraft() {
+    if (!this.recoveryEnabled || !this.node || !this.engine?.document?.id) {
+      return;
+    }
+    window.clearTimeout(this.pendingRecoveryTimer);
+    this.pendingRecoveryTimer = window.setTimeout(() => {
+      this.persistRecoveryDraft().catch(() => {});
+    }, Math.min(Math.max(this.autoSaveMs, 500), 1800));
+  }
+
+  async persistRecoveryDraft() {
+    if (!this.recoveryEnabled || !this.node || !this.engine?.document?.id) {
+      return null;
+    }
+    const snapshot = this.engine.captureSnapshot();
+    return saveRecoveryDraft({
+      ...this.getRecoveryScope(snapshot.document),
+      documentName: snapshot.document.name,
+      sourceRevision: snapshot.document.revision,
+      snapshot,
+    });
+  }
+
+  async clearRecoveryDraft(document = this.engine?.document) {
+    if (!document?.id) {
+      return;
+    }
+    this.activeRecoveryDraft = null;
+    this.hideRecoveryPrompt();
+    await clearRecoveryDraft(this.getRecoveryScope(document));
+  }
+
+  async checkRecoveryDraft(document = this.engine?.document) {
+    if (!this.recoveryEnabled || !document?.id) {
+      this.hideRecoveryPrompt();
+      return null;
+    }
+    const draft = await loadRecoveryDraft(this.getRecoveryScope(document));
+    if (!shouldOfferRecoveryDraft(document, draft)) {
+      this.activeRecoveryDraft = null;
+      this.hideRecoveryPrompt();
+      return null;
+    }
+    this.activeRecoveryDraft = draft;
+    this.showRecoveryPrompt(draft);
+    return draft;
+  }
+
+  async restoreRecoveryDraft() {
+    const draft = this.activeRecoveryDraft;
+    const restoredDocument = buildRecoveryDraftDocument(draft?.snapshot);
+    if (!draft || !restoredDocument) {
+      return;
+    }
+    window.clearTimeout(this.pendingSaveTimer);
+    this.pendingSaveTimer = 0;
+    this.ignoreEngineChanges = true;
+    await this.engine.loadDocument(restoredDocument);
+    this.ignoreEngineChanges = false;
+    this.colorWheel.setHex(this.engine.brush.color, { silent: true });
+    this.refreshAll();
+    this.hideRecoveryPrompt();
+    this.documentMutationVersion += 1;
+    this.needsSave = true;
+    this.scheduleRecoveryDraft();
+    this.pendingSaveTimer = window.setTimeout(() => {
+      this.saveNow().catch(() => {});
+    }, Math.min(this.autoSaveMs, 900));
+    this.setStatus(`Recovered local draft · ${restoredDocument.name}`);
+  }
+
+  async dismissRecoveryDraft() {
+    const draft = this.activeRecoveryDraft;
+    this.activeRecoveryDraft = null;
+    this.hideRecoveryPrompt();
+    if (!draft?.documentId && !draft?.nodeId) {
+      return;
+    }
+    await clearRecoveryDraft({
+      nodeId: draft.nodeId,
+      documentId: draft.documentId,
+    });
+    this.setStatus("Dismissed local draft");
+  }
+
+  persistCustomPaletteColors() {
+    this.customPaletteColors = normalizePaletteColors(this.customPaletteColors);
+    saveCustomPaletteColors(this.customPaletteColors);
+  }
+
+  addCurrentColorToPalette() {
+    const nextColor = String(this.engine?.brush?.color || "").trim();
+    if (!nextColor) {
+      return;
+    }
+    this.customPaletteColors = normalizePaletteColors([nextColor, ...(this.customPaletteColors || [])]);
+    this.persistCustomPaletteColors();
+    this.renderCustomPalette();
+    this.syncSwatches();
+    this.setStatus(`Added swatch · ${nextColor}`);
+  }
+
+  removeCustomPaletteColor(color) {
+    const normalized = String(color || "").trim().toLowerCase();
+    const nextColors = (this.customPaletteColors || []).filter((entry) => entry !== normalized);
+    if (nextColors.length === (this.customPaletteColors || []).length) {
+      return;
+    }
+    this.customPaletteColors = nextColors;
+    this.persistCustomPaletteColors();
+    this.renderCustomPalette();
+    this.syncSwatches();
+    this.setStatus(`Removed swatch · ${normalized}`);
+  }
+
+  clearCustomPaletteColors() {
+    if (!(this.customPaletteColors || []).length) {
+      return;
+    }
+    this.customPaletteColors = [];
+    this.persistCustomPaletteColors();
+    this.renderCustomPalette();
+    this.syncSwatches();
+    this.setStatus("Cleared custom swatches");
+  }
+
+  exportColorPalette() {
+    if (!(this.customPaletteColors || []).length) {
+      this.setStatus("No custom swatches to export");
+      return;
+    }
+    downloadBlob(createColorPaletteBlob(this.customPaletteColors), getColorPaletteFilename());
+    this.setStatus(`Exported ${this.customPaletteColors.length} swatch${this.customPaletteColors.length === 1 ? "" : "es"}`);
+  }
+
+  async importColorPalette(file) {
+    const colors = await readColorPaletteFile(file);
+    this.customPaletteColors = normalizePaletteColors([...colors, ...(this.customPaletteColors || [])]);
+    this.persistCustomPaletteColors();
+    this.renderCustomPalette();
+    this.syncSwatches();
+    this.setStatus(`Imported ${colors.length} swatch${colors.length === 1 ? "" : "es"}`);
+  }
+
+  renderCustomPalette() {
+    if (!this.customPaletteSwatches || !this.customPaletteEmptyState) {
+      return;
+    }
+    this.customPaletteSwatches.replaceChildren();
+    const colors = this.customPaletteColors || [];
+    this.customPaletteButtons = colors.map((color) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "cp-swatch cp-swatch--custom";
+      element.dataset.color = color;
+      element.style.background = color;
+      element.title = `${color} · right-click to remove`;
+      element.addEventListener("click", () => {
+        this.engine.setBrushColor(color);
+        this.colorWheel.setHex(color, { silent: true });
+        this.syncBrushControls();
+        this.syncSwatches();
+      });
+      element.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        this.removeCustomPaletteColor(color);
+      });
+      this.customPaletteSwatches.appendChild(element);
+      return element;
+    });
+    this.customPaletteEmptyState.hidden = colors.length > 0;
+    this.customPaletteEmptyState.textContent = "Save colors here to keep a personal palette across studio sessions.";
+  }
+
+  showDropZone() {
+    if (this.dropZone) {
+      this.dropZone.hidden = false;
+    }
+    this.root.classList.add("cp-drop-zone-active");
+  }
+
+  hideDropZone() {
+    if (this.dropZone) {
+      this.dropZone.hidden = true;
+    }
+    this.root.classList.remove("cp-drop-zone-active");
+  }
+
+  resetDropZoneState() {
+    this.dragFileDepth = 0;
+    this.hideDropZone();
+  }
+
+  async importExternalFile(file) {
+    const name = String(file?.name || "").toLowerCase();
+    if (!file) {
+      return false;
+    }
+    if (name.endsWith(".pencilstudio")) {
+      await this.openProjectFile(file);
+      return true;
+    }
+    if (name.endsWith(".brushes.json")) {
+      await this.importBrushPresetLibrary(file);
+      return true;
+    }
+    if (name.endsWith(".colors.json")) {
+      await this.importColorPalette(file);
+      return true;
+    }
+    if (String(file.type || "").startsWith("image/")) {
+      await this.engine.importFile(file);
+      this.setStatus(`Imported layer · ${file.name}`);
+      return true;
+    }
+    return false;
+  }
+
+  async importExternalFiles(files = []) {
+    const list = Array.from(files || []);
+    let handledCount = 0;
+    for (const file of list) {
+      const handled = await this.importExternalFile(file);
+      handledCount += handled ? 1 : 0;
+    }
+    if (!handledCount && list.length) {
+      this.setStatus("Unsupported drop content");
+    } else if (handledCount > 1) {
+      this.setStatus(`Imported ${handledCount} files into the studio`);
+    }
   }
 
   handleEngineChange(reason) {
@@ -572,8 +925,10 @@ export class ComfyPencilStudioOverlay {
       return;
     }
     window.clearTimeout(this.pendingSaveTimer);
+    this.documentMutationVersion += 1;
     this.needsSave = true;
     this.setStatus("Unsaved changes");
+    this.scheduleRecoveryDraft();
     this.pendingSaveTimer = window.setTimeout(() => {
       this.saveNow().catch(() => {});
     }, this.autoSaveMs);
@@ -940,6 +1295,21 @@ export class ComfyPencilStudioOverlay {
     });
   }
 
+  hasActiveBrushPresetChanges(activePreset = this.findBrushPreset()) {
+    const presetScope = getPresetScopeForTool(this.engine?.brush?.tool);
+    if (!presetScope || !activePreset) {
+      return false;
+    }
+
+    const brushPreset = this.createPresetFromActiveBrush({
+      id: activePreset.id,
+      label: activePreset.label,
+      libraryGroup: activePreset.libraryGroup,
+      sourcePreset: activePreset,
+    });
+    return !brushPresetEntriesEqual(brushPreset, activePreset);
+  }
+
   upsertCustomBrushPreset(preset) {
     if (!preset) {
       return null;
@@ -974,6 +1344,39 @@ export class ComfyPencilStudioOverlay {
     this.engine.setBrushPreset(preset.id);
     this.openBrushEditor();
     this.setStatus(`New preset · ${preset.label}`);
+  }
+
+  exportBrushPresetLibrary() {
+    const presetScope = getPresetScopeForTool(this.engine?.brush?.tool);
+    const exportPresets = presetScope
+      ? this.getScopedBrushPresets(this.engine?.brush?.tool)
+      : (this.customBrushPresets || []);
+    if (!exportPresets.length) {
+      this.setStatus("No presets available to export");
+      return;
+    }
+
+    const scopeLabel = presetScope || "custom-presets";
+    const blob = createBrushPresetLibraryBlob(exportPresets, { scopeLabel });
+    downloadBlob(blob, getBrushPresetLibraryFilename(scopeLabel));
+    this.setStatus(`Exported ${exportPresets.length} preset${exportPresets.length === 1 ? "" : "s"}`);
+  }
+
+  async importBrushPresetLibrary(file) {
+    if (!file) {
+      return;
+    }
+    const payload = await readBrushPresetLibraryFile(file);
+    const merged = mergeImportedBrushPresets(payload.presets, this.getBrushPresets());
+    if (!merged.imported.length) {
+      this.setStatus("No new presets were imported");
+      return;
+    }
+    this.customBrushPresets = merged.presets.filter((preset) => !isBuiltInBrushPresetId(preset.id));
+    this.persistCustomBrushPresets();
+    this.engine.setBrushPreset(merged.imported[0].id);
+    this.renderBrushLibrary();
+    this.setStatus(`Imported ${merged.imported.length} preset${merged.imported.length === 1 ? "" : "s"}`);
   }
 
   saveActiveBrushPreset() {
@@ -1028,18 +1431,93 @@ export class ComfyPencilStudioOverlay {
     this.setStatus(`Duplicated preset · ${preset.label}`);
   }
 
+  resetActiveBrushToPreset() {
+    const presetScope = getPresetScopeForTool(this.engine?.brush?.tool);
+    if (!presetScope) {
+      return;
+    }
+
+    const activePreset = this.findBrushPreset();
+    if (!activePreset) {
+      return;
+    }
+
+    this.engine.setBrushPreset(activePreset.id);
+    this.setStatus(`Reset brush · ${activePreset.label}`);
+  }
+
+  deleteActiveBrushPreset() {
+    const presetScope = getPresetScopeForTool(this.engine?.brush?.tool);
+    const activePreset = this.findBrushPreset();
+    if (!presetScope || !activePreset || isBuiltInBrushPresetId(activePreset.id)) {
+      return;
+    }
+
+    this.customBrushPresets = (this.customBrushPresets || []).filter((preset) => preset.id !== activePreset.id);
+    this.persistCustomBrushPresets();
+
+    const nextPreset = this.getScopedBrushPresets(this.engine?.brush?.tool).find((preset) => preset.id !== activePreset.id)
+      || BRUSH_PRESETS.find((preset) => preset.tool === presetScope)
+      || this.getBrushPresets()[0]
+      || null;
+    if (nextPreset) {
+      this.engine.setBrushPreset(nextPreset.id);
+    }
+    this.setStatus(`Deleted preset · ${activePreset.label}`);
+  }
+
   syncBrushPresetActions() {
     const presetScope = getPresetScopeForTool(this.engine?.brush?.tool);
     const showPresetActions = Boolean(presetScope);
+    const activePreset = this.findBrushPreset();
+    const isBuiltInPreset = Boolean(activePreset && isBuiltInBrushPresetId(activePreset.id));
+    const hasPresetChanges = this.hasActiveBrushPresetChanges(activePreset);
+    const canDeletePreset = Boolean(activePreset && !isBuiltInBrushPresetId(activePreset.id));
     if (this.brushNewButton) {
       this.brushNewButton.hidden = !showPresetActions;
       this.brushNewButton.textContent = presetScope === "blend" ? "+ New Blend" : "+ New Brush";
     }
+    if (this.brushImportButton) {
+      this.brushImportButton.hidden = !showPresetActions;
+      this.brushImportButton.title = "Import presets into your local custom library";
+    }
+    if (this.brushExportButton) {
+      this.brushExportButton.hidden = !showPresetActions;
+      this.brushExportButton.title = "Export the visible preset library as a portable file";
+    }
+    if (this.brushEditorResetButton) {
+      this.brushEditorResetButton.hidden = !showPresetActions;
+      this.brushEditorResetButton.disabled = !hasPresetChanges;
+      this.brushEditorResetButton.title = hasPresetChanges
+        ? "Revert unsaved brush changes"
+        : "No unsaved brush changes";
+    }
     if (this.brushEditorSaveButton) {
       this.brushEditorSaveButton.hidden = !showPresetActions;
+      this.brushEditorSaveButton.textContent = isBuiltInPreset ? "Save Copy" : "Save";
+      this.brushEditorSaveButton.disabled = !hasPresetChanges && !isBuiltInPreset;
+      this.brushEditorSaveButton.title = isBuiltInPreset
+        ? "Save the current brush as a new custom preset"
+        : (hasPresetChanges ? "Save changes to this preset" : "No preset changes to save");
     }
     if (this.brushEditorDuplicateButton) {
       this.brushEditorDuplicateButton.hidden = !showPresetActions;
+      this.brushEditorDuplicateButton.textContent = isBuiltInPreset ? "Save As New" : "Duplicate";
+      this.brushEditorDuplicateButton.title = "Create a new preset from the current brush settings";
+    }
+    if (this.brushEditorDeleteButton) {
+      this.brushEditorDeleteButton.hidden = !showPresetActions;
+      this.brushEditorDeleteButton.disabled = !canDeletePreset;
+      this.brushEditorDeleteButton.title = canDeletePreset
+        ? "Delete this custom preset"
+        : "Built-in presets cannot be deleted";
+    }
+    if (this.brushEditorTitle) {
+      const activeToolLabel = TOOLS.find((tool) => tool.id === this.engine?.brush?.tool)?.label || "Brush";
+      const baseTitle = isStrokeTool(this.engine?.brush?.tool)
+        ? `${activePreset?.label || activeToolLabel} Settings`
+        : `${activeToolLabel} Settings`;
+      this.brushEditorTitle.textContent = hasPresetChanges ? `${baseTitle} · Edited` : baseTitle;
     }
   }
 
@@ -1095,7 +1573,122 @@ export class ComfyPencilStudioOverlay {
     }
   }
 
+  scheduleBrushTextureUiRefresh() {
+    if (this.brushTextureRefreshFrame) {
+      return;
+    }
+
+    this.brushTextureRefreshFrame = window.requestAnimationFrame(() => {
+      this.brushTextureRefreshFrame = 0;
+      if (!this.isOpen) {
+        return;
+      }
+      this.syncBrushControls();
+      if (this.brushEditorOpen) {
+        this.renderBrushPreview();
+      }
+      if (this.panelState.brushLibrary) {
+        this.renderBrushLibrary();
+      }
+    });
+  }
+
+  createBrushTextureControlField(definition) {
+    const selectElement = select(getBrushEditorControlOptions(definition, this.engine?.brush), BRUSH_TEXTURE_NONE);
+    selectElement.dataset.controlKey = definition.key;
+
+    const preview = document.createElement("div");
+    preview.className = "cp-brush-texture__preview";
+    preview.dataset.kind = definition.textureKind || "shape";
+
+    const meta = document.createElement("div");
+    meta.className = "cp-brush-texture__meta";
+
+    const uploadButton = button("Upload", "cp-button cp-button--ghost cp-button--tiny");
+    const clearButton = button("Clear", "cp-button cp-button--ghost cp-button--tiny");
+    const actions = document.createElement("div");
+    actions.className = "cp-brush-texture__actions";
+    actions.append(uploadButton, clearButton);
+
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.hidden = true;
+
+    const body = document.createElement("div");
+    body.className = "cp-brush-texture__body";
+    body.append(selectElement, meta, actions, fileInput);
+
+    const textureControl = document.createElement("div");
+    textureControl.className = "cp-brush-texture";
+    textureControl.append(preview, body);
+
+    const wrapper = createField(definition.label, textureControl);
+    wrapper.dataset.controlKey = definition.key;
+    wrapper.classList.add("cp-brush-control", "cp-brush-control--texture");
+
+    const control = {
+      definition,
+      wrapper,
+      input: selectElement,
+      previewElement: preview,
+      metaElement: meta,
+      uploadButton,
+      clearButton,
+      fileInput,
+      valueElement: null,
+    };
+
+    selectElement.addEventListener("change", () => {
+      const nextValue = selectElement.value;
+      const currentValue = getBrushEditorControlValue(definition, this.engine?.brush);
+      if (nextValue === BRUSH_TEXTURE_CUSTOM) {
+        if (currentValue === BRUSH_TEXTURE_CUSTOM) {
+          return;
+        }
+        selectElement.value = String(currentValue ?? BRUSH_TEXTURE_NONE);
+        fileInput.click();
+        return;
+      }
+      this.commitBrushEditorControl(definition, nextValue);
+    });
+
+    uploadButton.addEventListener("click", () => {
+      fileInput.click();
+    });
+
+    clearButton.addEventListener("click", () => {
+      this.commitBrushEditorControl(definition, BRUSH_TEXTURE_NONE);
+      this.setStatus(`Cleared ${definition.label.toLowerCase()}`);
+    });
+
+    fileInput.addEventListener("change", async () => {
+      const [file] = Array.from(fileInput.files || []);
+      fileInput.value = "";
+      if (!file) {
+        return;
+      }
+      try {
+        const textureData = await normalizeUploadedBrushTexture(file, definition.textureKind || "shape");
+        const patch = definition.textureKind === "grain"
+          ? { grainTextureId: "", grainTextureData: textureData }
+          : { shapeTextureId: "", shapeTextureData: textureData };
+        this.engine.patchBrush(patch);
+        this.setStatus(`Loaded ${definition.label.toLowerCase()}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        this.setStatus(message ? `Texture load failed · ${message}` : "Texture load failed");
+      }
+    });
+
+    return control;
+  }
+
   createBrushEditorControlField(definition) {
+    if (definition.type === "texture") {
+      return this.createBrushTextureControlField(definition);
+    }
+
     let inputElement = null;
     if (definition.type === "range") {
       inputElement = slider(definition.min, definition.max, definition.step, definition.initial ?? 0);
@@ -1138,6 +1731,21 @@ export class ComfyPencilStudioOverlay {
     }
 
     const value = getBrushEditorControlValue(control.definition, brush);
+    if (control.definition.type === "texture") {
+      const options = getBrushEditorControlOptions(control.definition, brush);
+      syncSelectOptions(control.input, options, value);
+      const selection = describeBrushTextureSelection(control.definition.textureKind || "shape", brush);
+      control.previewElement.classList.toggle("cp-brush-texture__preview--empty", !selection.hasTexture);
+      control.previewElement.style.backgroundImage = selection.previewUrl ? `url("${selection.previewUrl}")` : "";
+      control.previewElement.style.backgroundSize = control.definition.textureKind === "grain" ? "cover" : "contain";
+      control.previewElement.textContent = selection.hasTexture ? selection.label : "None";
+      control.metaElement.textContent = selection.hasTexture
+        ? (selection.isCustom ? "Custom uploaded texture" : "Built-in texture")
+        : "Upload an image or pick a built-in texture.";
+      control.clearButton.disabled = !selection.hasTexture;
+      return true;
+    }
+
     if (control.input instanceof HTMLSelectElement) {
       const options = control.definition.key === "presetId"
         ? this.getScopedBrushPresets(brush.tool).map((preset) => ({
@@ -1205,12 +1813,13 @@ export class ComfyPencilStudioOverlay {
     this.syncBrushPresetActions();
     this.renderBrushLibrary();
     this.renderColorHistory();
+    this.renderCustomPalette();
     this.syncBrushEditorSections();
     this.refreshPanelVisibility();
   }
 
   syncSwatches() {
-    [this.swatchButtons].forEach((group) => group.forEach((buttonElement) => {
+    [this.swatchButtons, this.customPaletteButtons || []].forEach((group) => group.forEach((buttonElement) => {
       buttonElement.classList.toggle("cp-selected", buttonElement.dataset.color === this.engine.brush.color);
     }));
   }
@@ -2115,6 +2724,7 @@ export class ComfyPencilStudioOverlay {
     const previousScrollTop = this.brushLibraryList.scrollTop;
     const fragment = document.createDocumentFragment();
     scopedPresets.forEach((preset) => {
+      prepareBrushTextureState(preset, () => this.scheduleBrushTextureUiRefresh());
       const buttonElement = document.createElement("button");
       buttonElement.type = "button";
       buttonElement.className = "cp-brush-library__preset";
@@ -2149,6 +2759,7 @@ export class ComfyPencilStudioOverlay {
           color: "#f4f6fb",
           tool: activeTool === "eraser" && preset.tool === "brush" ? "brush" : preset.tool,
         };
+      prepareBrushTextureState(previewBrush, () => this.scheduleBrushTextureUiRefresh());
       const previewWidth = Math.max(
         340,
         Math.round((this.brushLibraryList?.clientWidth || this.brushLibraryPanel?.clientWidth || 372) - 8),
@@ -2604,20 +3215,20 @@ export class ComfyPencilStudioOverlay {
       ctx.fillStyle = "rgba(245, 247, 251, 0.74)";
       ctx.font = '600 18px "SF Pro Display", "Avenir Next", sans-serif';
       ctx.fillText("Stroke preview is available for brush, erase, and blend.", 24, Math.floor(height / 2));
-      this.brushEditorTitle.textContent = `${this.engine.brush.tool[0].toUpperCase()}${this.engine.brush.tool.slice(1)} Settings`;
       if (this.brushPadHint) {
         this.brushPadHint.textContent = "The drawing pad activates for brush, erase, and blend tools.";
       }
+      this.syncBrushPresetActions();
       return;
     }
 
-    this.brushEditorTitle.textContent = `${this.findBrushPreset(this.engine.brush.presetId)?.label || "Brush"} Settings`;
     if (this.brushPadHint) {
       this.brushPadHint.textContent = "Use the drawing pad to test shape, flow, pressure, and blend behavior with the active brush.";
     }
     if (!this.brushPreviewPadDirty) {
       this.resetBrushPreviewPad({ force: true });
     }
+    this.syncBrushPresetActions();
   }
 
   openQuickMenu(clientX = this.lastPointerClient.x, clientY = this.lastPointerClient.y) {
@@ -2666,6 +3277,7 @@ export class ComfyPencilStudioOverlay {
 
     this.galleryButton = button("Back", "cp-button cp-button--ghost cp-button--tiny");
     this.quickMenuButton = button("Quick", "cp-button cp-button--ghost cp-button--tiny");
+    this.helpButton = button("Help", "cp-button cp-button--ghost cp-button--tiny");
 
     const titleGroup = document.createElement("div");
     titleGroup.className = "cp-header__title";
@@ -2683,7 +3295,7 @@ export class ComfyPencilStudioOverlay {
     this.docSummary.className = "cp-header__summary";
     nameRow.append(this.nameInput, this.docPill);
     titleGroup.append(eyebrow, nameRow, this.metaLabel, this.docSummary);
-    leftGroup.append(this.galleryButton, this.quickMenuButton, titleGroup);
+    leftGroup.append(this.galleryButton, this.quickMenuButton, this.helpButton, titleGroup);
 
     const centerGroup = document.createElement("div");
     centerGroup.className = "cp-header__group cp-header__group--center";
@@ -2825,9 +3437,16 @@ export class ComfyPencilStudioOverlay {
     this.brushLibraryPanel.className = "cp-panel cp-panel--brush-library";
     const brushLibraryHeader = this.#panelHeader("Brush Library", "Select a preset or tune the active brush.");
     this.brushLibrarySubtitle = brushLibraryHeader.subtitle;
+    this.brushImportButton = button("Import", "cp-button cp-button--ghost cp-button--tiny");
+    this.brushExportButton = button("Export", "cp-button cp-button--ghost cp-button--tiny");
     this.brushNewButton = button("+ New Brush", "cp-button cp-button--ghost cp-button--tiny");
     this.brushEditorButton = button("Edit", "cp-button cp-button--ghost cp-button--tiny");
-    brushLibraryHeader.actions.append(this.brushNewButton, this.brushEditorButton);
+    brushLibraryHeader.actions.append(
+      this.brushImportButton,
+      this.brushExportButton,
+      this.brushNewButton,
+      this.brushEditorButton,
+    );
     this.brushLibraryPanel.append(brushLibraryHeader.header);
 
     const toolRail = document.createElement("div");
@@ -2861,6 +3480,10 @@ export class ComfyPencilStudioOverlay {
     this.colorPanel = document.createElement("section");
     this.colorPanel.className = "cp-panel cp-panel--color";
     const colorHeader = this.#panelHeader("Colors", "Current, previous, recent, and swatches.");
+    this.colorPaletteAddButton = button("Add", "cp-button cp-button--ghost cp-button--tiny");
+    this.colorPaletteImportButton = button("Import", "cp-button cp-button--ghost cp-button--tiny");
+    this.colorPaletteExportButton = button("Export", "cp-button cp-button--ghost cp-button--tiny");
+    this.colorPaletteResetButton = button("Clear", "cp-button cp-button--ghost cp-button--tiny");
     this.colorPanel.append(colorHeader.header);
     const colorSection = document.createElement("section");
     colorSection.className = "cp-color-section cp-color-section--disc";
@@ -2903,6 +3526,29 @@ export class ComfyPencilStudioOverlay {
     });
     colorSection.append(historyLabel, historyStrip);
 
+    const paletteHeader = document.createElement("div");
+    paletteHeader.className = "cp-color-section__header";
+    const paletteLabel = document.createElement("div");
+    paletteLabel.className = "cp-header__eyebrow";
+    paletteLabel.textContent = "Palette";
+    const paletteActions = document.createElement("div");
+    paletteActions.className = "cp-color-section__actions";
+    paletteActions.append(
+      this.colorPaletteAddButton,
+      this.colorPaletteImportButton,
+      this.colorPaletteExportButton,
+      this.colorPaletteResetButton,
+    );
+    paletteHeader.append(paletteLabel, paletteActions);
+    this.customPaletteSwatches = document.createElement("div");
+    this.customPaletteSwatches.className = "cp-swatches cp-swatches--palette";
+    this.customPaletteEmptyState = document.createElement("div");
+    this.customPaletteEmptyState.className = "cp-hint cp-hint--palette-empty";
+    colorSection.append(paletteHeader, this.customPaletteSwatches, this.customPaletteEmptyState);
+
+    const defaultPaletteLabel = document.createElement("div");
+    defaultPaletteLabel.className = "cp-header__eyebrow";
+    defaultPaletteLabel.textContent = "Defaults";
     const swatches = document.createElement("div");
     swatches.className = "cp-swatches";
     this.swatchButtons = DEFAULT_SWATCHES.map((color) => {
@@ -2920,7 +3566,7 @@ export class ComfyPencilStudioOverlay {
       swatches.appendChild(element);
       return element;
     });
-    colorSection.append(swatches);
+    colorSection.append(defaultPaletteLabel, swatches);
     this.colorPanel.append(colorSection);
 
     this.documentPanel = document.createElement("section");
@@ -3120,6 +3766,119 @@ export class ComfyPencilStudioOverlay {
     });
   }
 
+  #buildRecoveryPrompt() {
+    this.recoveryPrompt = document.createElement("section");
+    this.recoveryPrompt.className = "cp-recovery-prompt";
+    this.recoveryPrompt.hidden = true;
+
+    const title = document.createElement("div");
+    title.className = "cp-recovery-prompt__title";
+    title.textContent = "Local Draft Found";
+
+    this.recoveryPromptCopy = document.createElement("div");
+    this.recoveryPromptCopy.className = "cp-recovery-prompt__copy";
+
+    const actions = document.createElement("div");
+    actions.className = "cp-recovery-prompt__actions";
+    this.recoveryPromptRestoreButton = button("Restore Draft", "cp-button cp-primary cp-button--tiny");
+    this.recoveryPromptDismissButton = button("Dismiss", "cp-button cp-button--ghost cp-button--tiny");
+    actions.append(this.recoveryPromptRestoreButton, this.recoveryPromptDismissButton);
+
+    this.recoveryPrompt.append(title, this.recoveryPromptCopy, actions);
+    this.root.appendChild(this.recoveryPrompt);
+  }
+
+  #buildHelpOverlay() {
+    this.helpOverlay = document.createElement("div");
+    this.helpOverlay.className = "cp-help-overlay";
+    this.helpOverlay.hidden = true;
+
+    const backdrop = document.createElement("button");
+    backdrop.type = "button";
+    backdrop.className = "cp-help-overlay__backdrop";
+    backdrop.setAttribute("aria-label", "Close Comfy Pencil shortcut help");
+
+    const card = document.createElement("section");
+    card.className = "cp-help-overlay__card";
+    const header = document.createElement("div");
+    header.className = "cp-help-overlay__header";
+    const meta = document.createElement("div");
+    meta.className = "cp-help-overlay__meta";
+    const eyebrow = document.createElement("div");
+    eyebrow.className = "cp-header__eyebrow";
+    eyebrow.textContent = "Studio Guide";
+    const title = document.createElement("div");
+    title.className = "cp-help-overlay__title";
+    title.textContent = "Keyboard shortcuts and quick actions";
+    const copy = document.createElement("div");
+    copy.className = "cp-help-overlay__copy";
+    copy.textContent = "Keep the studio moving without hunting through panels.";
+    meta.append(eyebrow, title, copy);
+    this.helpOverlayCloseButton = button("Done", "cp-button cp-primary cp-button--tiny");
+    header.append(meta, this.helpOverlayCloseButton);
+
+    const sections = document.createElement("div");
+    sections.className = "cp-help-overlay__sections";
+    STUDIO_SHORTCUT_SECTIONS.forEach((section) => {
+      const sectionCard = document.createElement("section");
+      sectionCard.className = "cp-help-overlay__section";
+      const heading = document.createElement("h3");
+      heading.textContent = section.title;
+      const list = document.createElement("div");
+      list.className = "cp-help-overlay__list";
+      section.items.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "cp-help-overlay__row";
+        const keys = document.createElement("div");
+        keys.className = "cp-help-overlay__keys";
+        item.keys.forEach((keyLabel) => {
+          const key = document.createElement("kbd");
+          key.className = "cp-help-overlay__key";
+          key.textContent = keyLabel;
+          keys.appendChild(key);
+        });
+        const description = document.createElement("div");
+        description.className = "cp-help-overlay__description";
+        description.textContent = item.description;
+        row.append(keys, description);
+        list.appendChild(row);
+      });
+      sectionCard.append(heading, list);
+      sections.appendChild(sectionCard);
+    });
+
+    card.append(header, sections);
+    this.helpOverlay.append(backdrop, card);
+    this.root.appendChild(this.helpOverlay);
+  }
+
+  showRecoveryPrompt(draft) {
+    if (!this.recoveryPrompt || !draft) {
+      return;
+    }
+    const draftTime = draft.savedAt ? new Date(draft.savedAt) : null;
+    const timeLabel = draftTime && !Number.isNaN(draftTime.getTime())
+      ? draftTime.toLocaleString([], { hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" })
+      : "recently";
+    this.recoveryPromptCopy.textContent = `${draft.documentName || "Untitled Sketch"} has a newer local draft from ${timeLabel}.`;
+    this.recoveryPrompt.hidden = false;
+  }
+
+  hideRecoveryPrompt() {
+    if (this.recoveryPrompt) {
+      this.recoveryPrompt.hidden = true;
+    }
+  }
+
+  toggleHelpOverlay(force) {
+    const nextState = typeof force === "boolean" ? force : !this.helpOverlayOpen;
+    this.helpOverlayOpen = nextState;
+    if (this.helpOverlay) {
+      this.helpOverlay.hidden = !nextState;
+    }
+    this.root.classList.toggle("cp-help-open", nextState);
+  }
+
   #subPanel(title, ...content) {
     const section = document.createElement("section");
     section.className = "cp-subpanel";
@@ -3161,10 +3920,18 @@ export class ComfyPencilStudioOverlay {
     headerMeta.append(eyebrow, this.brushEditorTitle);
     const headerActions = document.createElement("div");
     headerActions.className = "cp-brush-editor__actions";
+    this.brushEditorResetButton = button("Reset", "cp-button cp-button--ghost cp-button--tiny");
     this.brushEditorSaveButton = button("Save", "cp-button cp-button--ghost cp-button--tiny");
     this.brushEditorDuplicateButton = button("Save As New", "cp-button cp-button--ghost cp-button--tiny");
+    this.brushEditorDeleteButton = button("Delete", "cp-button cp-button--ghost cp-button--tiny");
     this.brushEditorCloseButton = button("Done", "cp-button cp-primary");
-    headerActions.append(this.brushEditorSaveButton, this.brushEditorDuplicateButton, this.brushEditorCloseButton);
+    headerActions.append(
+      this.brushEditorResetButton,
+      this.brushEditorSaveButton,
+      this.brushEditorDuplicateButton,
+      this.brushEditorDeleteButton,
+      this.brushEditorCloseButton,
+    );
     header.append(headerMeta, headerActions);
 
     const body = document.createElement("div");
@@ -3312,6 +4079,21 @@ export class ComfyPencilStudioOverlay {
       const bounds = event.currentTarget.getBoundingClientRect();
       this.toggleQuickMenu(bounds.left + (bounds.width / 2), bounds.bottom + 84);
     });
+    this.helpButton.addEventListener("click", () => this.toggleHelpOverlay(true));
+    this.recoveryPromptRestoreButton?.addEventListener("click", () => {
+      this.restoreRecoveryDraft().catch(() => {});
+    });
+    this.recoveryPromptDismissButton?.addEventListener("click", () => {
+      this.dismissRecoveryDraft().catch(() => {});
+    });
+    this.helpOverlayCloseButton?.addEventListener("click", () => this.toggleHelpOverlay(false));
+    this.helpOverlay?.querySelector(".cp-help-overlay__backdrop")?.addEventListener("click", () => this.toggleHelpOverlay(false));
+    this.brushImportButton?.addEventListener("click", () => this.brushPresetFileInput?.click());
+    this.brushExportButton?.addEventListener("click", () => this.exportBrushPresetLibrary());
+    this.colorPaletteAddButton?.addEventListener("click", () => this.addCurrentColorToPalette());
+    this.colorPaletteImportButton?.addEventListener("click", () => this.colorPaletteFileInput?.click());
+    this.colorPaletteExportButton?.addEventListener("click", () => this.exportColorPalette());
+    this.colorPaletteResetButton?.addEventListener("click", () => this.clearCustomPaletteColors());
     this.brushNewButton.addEventListener("click", () => this.createNewBrushPreset());
     this.brushEditorButton.addEventListener("click", () => this.openBrushEditor());
     this.interfaceToggleButton?.addEventListener("click", () => this.toggleInterfaceHidden());
@@ -3353,6 +4135,9 @@ export class ComfyPencilStudioOverlay {
     this.toolbarSizeInput.addEventListener("input", () => this.engine.patchBrush({ size: Number(this.toolbarSizeInput.value) }));
     this.toolbarOpacityInput.addEventListener("input", () => this.engine.patchBrush({ opacity: Number(this.toolbarOpacityInput.value) }));
     Object.values(this.brushControlRegistry || {}).forEach(({ definition, input }) => {
+      if (definition.type === "texture") {
+        return;
+      }
       const eventName = definition.type === "select" ? "change" : "input";
       input.addEventListener(eventName, () => {
         this.commitBrushEditorControl(definition, input.value);
@@ -3402,8 +4187,10 @@ export class ComfyPencilStudioOverlay {
     this.strokeConstraintSelect.addEventListener("change", () => {
       this.engine.setStrokeConstraintDegrees(Number(this.strokeConstraintSelect.value));
     });
+    this.brushEditorResetButton.addEventListener("click", () => this.resetActiveBrushToPreset());
     this.brushEditorSaveButton.addEventListener("click", () => this.saveActiveBrushPreset());
     this.brushEditorDuplicateButton.addEventListener("click", () => this.saveActiveBrushPresetAsNew());
+    this.brushEditorDeleteButton.addEventListener("click", () => this.deleteActiveBrushPreset());
     this.brushEditorCloseButton.addEventListener("click", () => this.closeBrushEditor());
     this.brushEditorOverlay.querySelector(".cp-brush-editor__backdrop").addEventListener("click", () => this.closeBrushEditor());
 
@@ -3421,10 +4208,47 @@ export class ComfyPencilStudioOverlay {
       const [file] = this.fileInput.files || [];
       if (file) {
         await this.engine.importFile(file);
+        this.setStatus(`Imported layer · ${file.name}`);
       }
       this.fileInput.value = "";
     });
     document.body.appendChild(this.fileInput);
+
+    this.brushPresetFileInput = document.createElement("input");
+    this.brushPresetFileInput.type = "file";
+    this.brushPresetFileInput.accept = ".json,.brushes.json,application/json";
+    this.brushPresetFileInput.hidden = true;
+    this.brushPresetFileInput.addEventListener("change", async () => {
+      const [file] = this.brushPresetFileInput.files || [];
+      try {
+        if (file) {
+          await this.importBrushPresetLibrary(file);
+        }
+      } catch (error) {
+        this.setStatus(`Preset import failed · ${error.message}`);
+      } finally {
+        this.brushPresetFileInput.value = "";
+      }
+    });
+    document.body.appendChild(this.brushPresetFileInput);
+
+    this.colorPaletteFileInput = document.createElement("input");
+    this.colorPaletteFileInput.type = "file";
+    this.colorPaletteFileInput.accept = ".json,.colors.json,application/json";
+    this.colorPaletteFileInput.hidden = true;
+    this.colorPaletteFileInput.addEventListener("change", async () => {
+      const [file] = this.colorPaletteFileInput.files || [];
+      try {
+        if (file) {
+          await this.importColorPalette(file);
+        }
+      } catch (error) {
+        this.setStatus(`Palette import failed · ${error.message}`);
+      } finally {
+        this.colorPaletteFileInput.value = "";
+      }
+    });
+    document.body.appendChild(this.colorPaletteFileInput);
 
     this.projectFileInput = document.createElement("input");
     this.projectFileInput.type = "file";
@@ -3534,6 +4358,92 @@ export class ComfyPencilStudioOverlay {
       this.closeQuickMenu();
     });
 
+    this.root.addEventListener("dragenter", (event) => {
+      if (!this.isOpen || !eventHasFilePayload(event)) {
+        return;
+      }
+      event.preventDefault();
+      this.dragFileDepth += 1;
+      this.showDropZone();
+    });
+
+    this.root.addEventListener("dragover", (event) => {
+      if (!this.isOpen || !eventHasFilePayload(event)) {
+        return;
+      }
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+      this.showDropZone();
+    });
+
+    this.root.addEventListener("dragleave", (event) => {
+      if (!this.isOpen || !eventHasFilePayload(event)) {
+        return;
+      }
+      event.preventDefault();
+      const nextTarget = event.relatedTarget;
+      if (nextTarget && this.root.contains(nextTarget)) {
+        return;
+      }
+      this.dragFileDepth = Math.max(0, this.dragFileDepth - 1);
+      if (!this.dragFileDepth) {
+        this.hideDropZone();
+      }
+    });
+
+    this.root.addEventListener("drop", (event) => {
+      if (!this.isOpen || !eventHasFilePayload(event)) {
+        return;
+      }
+      event.preventDefault();
+      this.resetDropZoneState();
+      this.importExternalFiles(event.dataTransfer?.files || []).catch((error) => {
+        this.setStatus(`Import failed · ${error.message}`);
+      });
+    });
+
+    window.addEventListener("dragend", () => {
+      if (!this.isOpen) {
+        return;
+      }
+      this.resetDropZoneState();
+    });
+
+    window.addEventListener("drop", () => {
+      if (!this.isOpen) {
+        return;
+      }
+      this.resetDropZoneState();
+    });
+
+    window.addEventListener("blur", () => {
+      if (!this.isOpen) {
+        return;
+      }
+      this.resetDropZoneState();
+    });
+
+    window.addEventListener("paste", (event) => {
+      if (!this.isOpen || isTextEntryElement(event.target)) {
+        return;
+      }
+      const items = Array.from(event.clipboardData?.items || []);
+      const imageItem = items.find((item) => String(item.type || "").startsWith("image/"));
+      if (!imageItem) {
+        return;
+      }
+      const file = imageItem.getAsFile();
+      if (!file) {
+        return;
+      }
+      event.preventDefault();
+      this.importExternalFile(file).catch((error) => {
+        this.setStatus(`Paste failed · ${error.message}`);
+      });
+    });
+
     window.addEventListener("keydown", (event) => {
       if (!this.isOpen) {
         return;
@@ -3565,7 +4475,18 @@ export class ComfyPencilStudioOverlay {
       }
 
       const key = event.key.toLowerCase();
-      if (key === "escape" && this.brushEditorOpen) {
+      if ((event.key === "?" || (key === "/" && event.shiftKey)) && !metaKey) {
+        event.preventDefault();
+        this.toggleHelpOverlay();
+        return;
+      }
+
+      if (key === "escape" && this.helpOverlayOpen) {
+        event.preventDefault();
+        this.toggleHelpOverlay(false);
+      } else if (this.helpOverlayOpen) {
+        return;
+      } else if (key === "escape" && this.brushEditorOpen) {
         event.preventDefault();
         this.closeBrushEditor();
       } else if (key === "escape" && this.quickMenuOpen) {

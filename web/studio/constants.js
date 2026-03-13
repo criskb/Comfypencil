@@ -6,6 +6,7 @@ export const SIDEBAR_TAB_ID = "comfypencilSidebar";
 export const COMMANDS = {
   OPEN_SELECTED: "ComfyPencil.OpenSelectedStudio",
   SAVE_ACTIVE: "ComfyPencil.SaveActiveStudio",
+  OPEN_HELP: "ComfyPencil.OpenStudioHelp",
 };
 
 export const TOOLS = [
@@ -46,9 +47,14 @@ const BRUSH_ENGINE_DEFAULTS = {
   endTaper: null,
   taperOpacity: 0.22,
   tipSharpness: 0.5,
+  shapeTextureId: "",
+  shapeTextureData: "",
+  shapeTextureScale: 1,
   shapeCount: 0,
   shapeCountJitter: 0,
   shapeAzimuth: 1,
+  grainTextureId: "",
+  grainTextureData: "",
   grainScale: 0.45,
   grainDepth: 0.35,
   grainContrast: 0.5,

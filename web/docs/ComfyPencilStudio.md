@@ -31,4 +31,9 @@ Open the drawing workspace from the node button, the selection toolbox, the Comf
 - `document_id`, `revision`, and `run_token` are internal workflow fields managed by the frontend.
 - `flatten_background` bakes the paper tone into the `IMAGE` output. Leave it off if you want to composite with the `MASK` downstream.
 - Use `Open Project` and `Save Project` in the Canvas panel for portable artwork files. Use `Save` to persist the current node-backed document in place.
+- The studio keeps a local recovery draft in browser storage by default and offers restore if it finds newer unsaved work.
+- Use `Import` and `Export` in the Brush Library to move preset libraries between setups.
+- The Colors panel supports a persistent custom palette, plus palette import/export.
+- Drop supported files onto the studio, or paste an image from the clipboard, to import layers faster.
+- Press `?` or click `Help` in the header to open the built-in shortcut guide.
 - The split dock supports manual refresh, timed active run, stop, and downstream export when split view is enabled.

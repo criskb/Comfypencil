@@ -1,5 +1,6 @@
 import { BLEND_MODES, BRUSH_PRESETS, CANVAS_SYMMETRY_OPTIONS, STROKE_CONSTRAINT_OPTIONS } from "./constants.js";
 import { packBrushMaterial, stampBrushDab } from "./brush-stamp.js";
+import { prepareBrushTextureState } from "./brush-textures.js";
 import { clamp, lerp, rgbToHex } from "./brush-utils.js";
 
 const SYMMETRY_MODE_SET = new Set(CANVAS_SYMMETRY_OPTIONS.map((option) => option.value));
@@ -207,6 +208,7 @@ export class CanvasEngine {
       presetId: initialPreset.id,
       ...initialPreset,
     };
+    this.#prepareBrushTextures(this.brush);
     this.dirtyLayerIds = new Set();
     this.soloLayerId = "";
   }
@@ -243,6 +245,7 @@ export class CanvasEngine {
 
   setBrushPresets(presets) {
     this.brushPresets = cloneBrushPresetList(presets);
+    this.brushPresets.forEach((preset) => this.#prepareBrushTextures(preset));
   }
 
   setBrushPreset(presetId) {
@@ -258,6 +261,11 @@ export class CanvasEngine {
       presetId,
       tool: activeScope && presetScope === activeScope ? this.brush.tool : preset.tool,
     };
+    this.#prepareBrushTextures(this.brush, () => {
+      if (this.brush?.presetId === presetId) {
+        this.#emitChange("brush");
+      }
+    });
     this.#emitChange("brush");
   }
 
@@ -266,6 +274,12 @@ export class CanvasEngine {
       ...this.brush,
       ...patch,
     };
+    const activeBrush = this.brush;
+    this.#prepareBrushTextures(activeBrush, () => {
+      if (this.brush === activeBrush) {
+        this.#emitChange("brush");
+      }
+    });
     this.#emitChange("brush");
   }
 
@@ -1585,6 +1599,10 @@ export class CanvasEngine {
     if (!this.document?.layers.some((layer) => layer.id === this.soloLayerId)) {
       this.soloLayerId = "";
     }
+  }
+
+  #prepareBrushTextures(brush, onResolved = null) {
+    prepareBrushTextureState(brush, onResolved);
   }
 
   #emitChange(reason) {

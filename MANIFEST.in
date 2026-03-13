@@ -1,0 +1,8 @@
+include README.md
+include CHANGELOG.md
+include LICENSE
+recursive-include assets *.svg
+recursive-include example_workflows *.json *.png
+recursive-include locales *.json
+recursive-include tests *.py
+recursive-include web *.js *.css *.md *.svg *.json

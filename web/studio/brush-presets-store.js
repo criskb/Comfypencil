@@ -77,7 +77,7 @@ function sanitizeBrushPreset(rawPreset) {
   return preset;
 }
 
-function normalizeCustomBrushPresets(customPresets) {
+export function normalizeCustomBrushPresets(customPresets) {
   const presetMap = new Map();
   (customPresets || []).forEach((preset) => {
     const normalized = sanitizeBrushPreset(preset);

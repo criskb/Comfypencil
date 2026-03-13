@@ -17,11 +17,52 @@ function getOverlay() {
   return overlay;
 }
 
+function createNoticeContent(message, title = "Comfy Pencil") {
+  const wrapper = document.createElement("div");
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const body = document.createElement("div");
+  body.style.marginTop = "0.45rem";
+  body.style.lineHeight = "1.45";
+  body.textContent = String(message || "").trim() || title;
+  wrapper.append(heading, body);
+  return wrapper;
+}
+
 function showNotice(message) {
   if (!noticeDialog) {
     noticeDialog = new ComfyDialog();
   }
-  noticeDialog.show(String(message || "").trim() || "Comfy Pencil");
+  noticeDialog.show(createNoticeContent(message));
+}
+
+function getErrorMessage(error, fallback = "Comfy Pencil failed.") {
+  if (error instanceof Error && String(error.message || "").trim()) {
+    return error.message;
+  }
+  return fallback;
+}
+
+function showError(error, fallback = "Comfy Pencil failed.") {
+  const message = getErrorMessage(error, fallback);
+  console.error("[ComfyPencil]", error);
+  if (!noticeDialog) {
+    noticeDialog = new ComfyDialog();
+  }
+  noticeDialog.show(createNoticeContent(message, "Comfy Pencil Error"));
+}
+
+async function saveActiveStudio() {
+  const currentOverlay = getOverlay();
+  if (!currentOverlay.isOpen) {
+    showNotice("Open Comfy Pencil Studio first.");
+    return;
+  }
+  try {
+    await currentOverlay.saveNow({ force: true });
+  } catch (error) {
+    showError(error, "Failed to save Comfy Pencil Studio.");
+  }
 }
 
 function hideWidget(widget) {
@@ -49,14 +90,23 @@ function getAutoSaveMs() {
   return Number(app.ui?.settings?.getSettingValue?.("ComfyPencil.Settings.AutoSaveMs") || 900);
 }
 
+function getRecoveryEnabled() {
+  return app.ui?.settings?.getSettingValue?.("ComfyPencil.Settings.EnableRecovery") !== false;
+}
+
 async function openStudioForNode(node) {
   if (!node) {
     showNotice("Select a Comfy Pencil Studio node first.");
     return;
   }
-  await getOverlay().openForNode(node, {
-    autoSaveMs: getAutoSaveMs(),
-  });
+  try {
+    await getOverlay().openForNode(node, {
+      autoSaveMs: getAutoSaveMs(),
+      recoveryEnabled: getRecoveryEnabled(),
+    });
+  } catch (error) {
+    showError(error, "Failed to open Comfy Pencil Studio.");
+  }
 }
 
 function decorateStudioNode(node) {
@@ -70,9 +120,7 @@ function decorateStudioNode(node) {
   hideWidget(node.widgets?.find((widget) => widget.name === "run_token"));
 
   const openButton = node.addWidget("button", "Open Studio", null, () => {
-    openStudioForNode(node).catch((error) => {
-      console.error("[ComfyPencil] Failed to open studio.", error);
-    });
+    void openStudioForNode(node);
   });
   openButton.computeSize = openButton.computeSize?.bind(openButton) || (() => [0, 28]);
 }
@@ -100,7 +148,7 @@ function renderSidebarLauncher(element) {
   launchSelected.className = "cp-button cp-primary";
   launchSelected.textContent = "Open Selected Studio";
   launchSelected.addEventListener("click", () => {
-    openStudioForNode(getSelectedStudioNode()).catch((error) => console.error(error));
+    void openStudioForNode(getSelectedStudioNode());
   });
   headerCard.appendChild(document.createElement("div")).appendChild(launchSelected);
   container.appendChild(headerCard);
@@ -139,7 +187,7 @@ function renderSidebarLauncher(element) {
       button.textContent = "Open";
       button.addEventListener("click", () => {
         app.canvas?.selectNode?.(node, false);
-        openStudioForNode(node).catch((error) => console.error(error));
+        void openStudioForNode(node);
       });
       row.append(label, button);
       nodesList.appendChild(row);
@@ -228,6 +276,13 @@ app.registerExtension({
       category: ["Comfy Pencil", "Studio", "Autosave"],
     },
     {
+      id: "ComfyPencil.Settings.EnableRecovery",
+      name: "Keep local recovery drafts",
+      type: "boolean",
+      defaultValue: true,
+      category: ["Comfy Pencil", "Studio", "Autosave"],
+    },
+    {
       id: "ComfyPencil.Settings.ShowNodeButton",
       name: "Show Open Studio button on nodes",
       type: "boolean",
@@ -247,14 +302,26 @@ app.registerExtension({
       id: COMMANDS.SAVE_ACTIVE,
       label: "Comfy Pencil: Save Active Studio",
       icon: "pi pi-save",
-      function: () => getOverlay().saveNow({ force: true }),
+      function: () => saveActiveStudio(),
+    },
+    {
+      id: COMMANDS.OPEN_HELP,
+      label: "Comfy Pencil: Open Studio Help",
+      icon: "pi pi-question-circle",
+      function: async () => {
+        const currentOverlay = getOverlay();
+        if (!currentOverlay.isOpen) {
+          await openStudioForNode(getSelectedStudioNode());
+        }
+        currentOverlay.toggleHelpOverlay(true);
+      },
     },
   ],
 
   menuCommands: [
     {
       path: ["Extensions", "Comfy Pencil"],
-      commands: [COMMANDS.OPEN_SELECTED, COMMANDS.SAVE_ACTIVE],
+      commands: [COMMANDS.OPEN_SELECTED, COMMANDS.SAVE_ACTIVE, COMMANDS.OPEN_HELP],
     },
   ],
 
