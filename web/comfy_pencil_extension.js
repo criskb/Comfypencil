@@ -118,6 +118,7 @@ function decorateStudioNode(node) {
   hideWidget(node.widgets?.find((widget) => widget.name === "document_id"));
   hideWidget(node.widgets?.find((widget) => widget.name === "revision"));
   hideWidget(node.widgets?.find((widget) => widget.name === "run_token"));
+  hideWidget(node.widgets?.find((widget) => widget.name === "split_prompt"));
 
   const openButton = node.addWidget("button", "Open Studio", null, () => {
     void openStudioForNode(node);

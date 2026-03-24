@@ -30,6 +30,40 @@ def load_modules(data_dir: Path):
 
 
 class ComfyPencilBackendTests(unittest.TestCase):
+    def test_studio_can_encode_split_prompt_conditioning(self):
+        class FakeClip:
+            def tokenize(self, text):
+                return {"g": [f"g:{text}"], "l": [f"l:{text}"]}
+
+            def encode_from_tokens(self, tokens, return_pooled=False):
+                self.tokens = tokens
+                return ({"encoded": tokens}, {"pooled": True}) if return_pooled else {"encoded": tokens}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            _, _, nodes = load_modules(Path(temp_dir))
+            studio = nodes.ComfyPencilStudio()
+            clip = FakeClip()
+
+            result = studio.render(
+                "Prompt Test",
+                "",
+                0,
+                0,
+                "misty forest at dawn",
+                96,
+                64,
+                "transparent",
+                "#ffffff",
+                False,
+                clip=clip,
+                unique_id="7",
+            )
+
+            conditioning = result[-1]
+            self.assertEqual(len(conditioning), 1)
+            self.assertEqual(conditioning[0][0]["encoded"]["g"], ["g:misty forest at dawn"])
+            self.assertEqual(conditioning[0][1]["pooled_output"], {"pooled": True})
+
     def test_create_and_render_document(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store, rendering, _ = load_modules(Path(temp_dir))

@@ -383,20 +383,31 @@ export class ComfyPencilStudioOverlay {
               </div>
             </aside>
             <div class="cp-stage__split-toolbar" hidden>
-              <div class="cp-stage__split-meta">
-                <div class="cp-stage__split-title">Downstream Preview</div>
-                <div class="cp-stage__split-status"></div>
-              </div>
-              <div class="cp-stage__split-actions">
-                <button type="button" class="cp-button cp-button--ghost cp-button--tiny" data-split-action="refresh">Refresh</button>
-                <button type="button" class="cp-button cp-button--tiny" data-split-action="autorun">Active Run</button>
-                <select class="cp-stage__split-select" data-split-action="interval" aria-label="Active run interval">
-                  <option value="3">3s</option>
-                  <option value="5" selected>5s</option>
-                  <option value="10">10s</option>
-                </select>
-                <button type="button" class="cp-button cp-button--ghost cp-button--tiny" data-split-action="stop">Stop</button>
-                <button type="button" class="cp-button cp-button--tiny" data-split-action="export">Export to Canvas</button>
+              <label class="cp-stage__split-prompt">
+                <span class="cp-stage__split-prompt-label">Prompt</span>
+                <textarea
+                  class="cp-stage__split-prompt-input"
+                  data-split-action="prompt"
+                  rows="2"
+                  placeholder="Describe what the split-view workflow should generate..."
+                ></textarea>
+              </label>
+              <div class="cp-stage__split-footer">
+                <div class="cp-stage__split-meta">
+                  <div class="cp-stage__split-title">Downstream Preview</div>
+                  <div class="cp-stage__split-status"></div>
+                </div>
+                <div class="cp-stage__split-actions">
+                  <button type="button" class="cp-button cp-button--ghost cp-button--tiny" data-split-action="refresh">Refresh</button>
+                  <button type="button" class="cp-button cp-button--tiny" data-split-action="autorun">Active Run</button>
+                  <select class="cp-stage__split-select" data-split-action="interval" aria-label="Active run interval">
+                    <option value="3">3s</option>
+                    <option value="5" selected>5s</option>
+                    <option value="10">10s</option>
+                  </select>
+                  <button type="button" class="cp-button cp-button--ghost cp-button--tiny" data-split-action="stop">Stop</button>
+                  <button type="button" class="cp-button cp-button--tiny cp-stage__split-export" data-split-action="export">Export to Canvas</button>
+                </div>
               </div>
             </div>
           </div>
@@ -421,6 +432,7 @@ export class ComfyPencilStudioOverlay {
     this.streamPaneEmpty = this.root.querySelector(".cp-stage__split-empty");
     this.streamPaneSurface = this.root.querySelector(".cp-stage__split-surface");
     this.streamPaneToolbar = this.root.querySelector(".cp-stage__split-toolbar");
+    this.streamPromptInput = this.root.querySelector('[data-split-action="prompt"]');
     this.streamRefreshButton = this.root.querySelector('[data-split-action="refresh"]');
     this.streamAutoRunButton = this.root.querySelector('[data-split-action="autorun"]');
     this.streamIntervalSelect = this.root.querySelector('[data-split-action="interval"]');
@@ -505,7 +517,7 @@ export class ComfyPencilStudioOverlay {
       status: "Run the receiver node to update this preview.",
     };
     this.panelState.interfaceHidden = false;
-    this.panelState.brushLibrary = true;
+    this.panelState.brushLibrary = false;
     this.panelState.layers = false;
     this.panelState.color = false;
     this.panelState.document = false;
@@ -947,6 +959,7 @@ export class ComfyPencilStudioOverlay {
     Object.keys(this.panelRegistry || {}).forEach((panelName) => this.syncPanelPosition(panelName));
     this.refreshPanelVisibility();
     this.refreshViewportChips();
+    this.syncSplitPromptInput();
   }
 
   getCanvasAssistParts({ includeNeutralRotation = false } = {}) {
@@ -2005,6 +2018,19 @@ export class ComfyPencilStudioOverlay {
     if (this.streamExportButton) {
       this.streamExportButton.disabled = !stream?.connected;
     }
+    if (this.streamPromptInput) {
+      this.streamPromptInput.disabled = !this.isOpen;
+    }
+  }
+
+  syncSplitPromptInput() {
+    if (!this.streamPromptInput) {
+      return;
+    }
+    const nextValue = String(getWidgetValue(this.node, "split_prompt", "") || "");
+    if (this.streamPromptInput.value !== nextValue) {
+      this.streamPromptInput.value = nextValue;
+    }
   }
 
   async runBackgroundWorkflow({ reason = "manual", quietWhenBusy = false } = {}) {
@@ -2761,8 +2787,14 @@ export class ComfyPencilStudioOverlay {
         };
       prepareBrushTextureState(previewBrush, () => this.scheduleBrushTextureUiRefresh());
       const previewWidth = Math.max(
-        340,
-        Math.round((this.brushLibraryList?.clientWidth || this.brushLibraryPanel?.clientWidth || 372) - 8),
+        280,
+        Math.round(
+          preview.parentElement?.clientWidth
+          || buttonElement.clientWidth
+          || this.brushLibraryList?.clientWidth
+          || this.brushLibraryPanel?.clientWidth
+          || 372,
+        ) - 2,
       );
       renderBrushStrokeSample(preview, previewBrush, {
         width: previewWidth,
@@ -3076,7 +3108,7 @@ export class ComfyPencilStudioOverlay {
 
   beginBrushPreviewStroke(event) {
     const point = this.getBrushPreviewPadPoint(event);
-    const brush = this.engine?.brush;
+    const brush = this.getBrushEditorPreviewBrush();
     if (!point || !brush || !["brush", "eraser", "blend"].includes(brush.tool)) {
       return;
     }
@@ -3107,7 +3139,7 @@ export class ComfyPencilStudioOverlay {
       return;
     }
     const point = this.getBrushPreviewPadPoint(event);
-    const brush = this.engine?.brush;
+    const brush = this.getBrushEditorPreviewBrush();
     if (!point || !brush) {
       return;
     }
@@ -3166,7 +3198,7 @@ export class ComfyPencilStudioOverlay {
       return;
     }
     if ((this.brushPreviewStroke.renderedStampCount || 0) === 0) {
-      const brush = this.engine?.brush;
+      const brush = this.getBrushEditorPreviewBrush();
       if (brush) {
         const canvas = this.brushPadCanvas;
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -3184,8 +3216,23 @@ export class ComfyPencilStudioOverlay {
     this.brushPreviewStroke = null;
   }
 
+  getBrushEditorPreviewBrush() {
+    if (!this.engine?.brush) {
+      return null;
+    }
+    return {
+      ...this.engine.brush,
+      color: "#f5f7fb",
+    };
+  }
+
   renderBrushPreview() {
     if (!this.brushPreviewCanvas) {
+      return;
+    }
+
+    const previewBrush = this.getBrushEditorPreviewBrush();
+    if (!previewBrush) {
       return;
     }
 
@@ -3193,20 +3240,20 @@ export class ComfyPencilStudioOverlay {
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(320, Math.round(rect.width || 360));
     const height = Math.max(120, Math.round(rect.height || 132));
-    const previewSignature = getBrushPreviewSignature(this.engine.brush, {
+    const previewSignature = getBrushPreviewSignature(previewBrush, {
       width,
       height,
       background: "#13161c",
-      sampleColor: this.engine.brush.color,
+      sampleColor: previewBrush.color,
       grid: true,
     });
     const strokeTool = canvas.dataset.previewSignature === previewSignature
-      ? isStrokeTool(this.engine.brush.tool)
-      : renderBrushStrokeSample(canvas, this.engine.brush, {
+      ? isStrokeTool(previewBrush.tool)
+      : renderBrushStrokeSample(canvas, previewBrush, {
         width,
         height,
         background: "#13161c",
-        sampleColor: this.engine.brush.color,
+        sampleColor: previewBrush.color,
         grid: true,
       });
     canvas.dataset.previewSignature = previewSignature;
@@ -3468,13 +3515,16 @@ export class ComfyPencilStudioOverlay {
 
     const brushLibraryBody = document.createElement("div");
     brushLibraryBody.className = "cp-brush-library";
+    const brushLibraryViewport = document.createElement("div");
+    brushLibraryViewport.className = "cp-brush-library__viewport";
 
     this.brushLibraryList = document.createElement("div");
     this.brushLibraryList.className = "cp-brush-library__list";
     this.brushLibraryEmptyState = document.createElement("div");
     this.brushLibraryEmptyState.className = "cp-brush-library__empty";
     this.brushLibraryEmptyState.hidden = true;
-    brushLibraryBody.append(this.brushLibraryList, this.brushLibraryEmptyState);
+    brushLibraryViewport.append(this.brushLibraryList);
+    brushLibraryBody.append(brushLibraryViewport, this.brushLibraryEmptyState);
     this.brushLibraryPanel.append(brushLibraryBody);
 
     this.colorPanel = document.createElement("section");
@@ -4104,6 +4154,9 @@ export class ComfyPencilStudioOverlay {
       this.startIncomingStreamAutoRun({
         intervalSeconds: Number(this.streamIntervalSelect?.value || this.streamAutoRunSeconds),
       });
+    });
+    this.streamPromptInput?.addEventListener("input", () => {
+      setWidgetValue(this.node, "split_prompt", this.streamPromptInput.value || "");
     });
     this.streamIntervalSelect?.addEventListener("change", () => {
       const nextSeconds = Number(this.streamIntervalSelect.value || this.streamAutoRunSeconds);

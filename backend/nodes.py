@@ -117,6 +117,48 @@ def _prepare_split_preview_image(image_tensor, width: int, height: int, resize_m
     return canvas
 
 
+def _encode_split_prompt_conditioning(clip: Any, prompt_text: str):
+    if clip is None:
+        return []
+
+    tokenize = getattr(clip, "tokenize", None)
+    encode_from_tokens = getattr(clip, "encode_from_tokens", None)
+    if not callable(tokenize) or not callable(encode_from_tokens):
+        return []
+
+    prompt = str(prompt_text or "")
+    tokens = tokenize(prompt)
+    if isinstance(tokens, dict) and "g" in tokens and "l" in tokens:
+        local_tokens = tokenize(prompt).get("l", [])
+        global_tokens = tokens.get("g", [])
+        if len(local_tokens) != len(global_tokens):
+            empty_tokens = tokenize("")
+            empty_local = empty_tokens.get("l", [])
+            empty_global = empty_tokens.get("g", [])
+            while len(local_tokens) < len(global_tokens):
+                local_tokens += empty_local
+            while len(global_tokens) < len(local_tokens):
+                global_tokens += empty_global
+            tokens["l"] = local_tokens
+            tokens["g"] = global_tokens
+
+    encoded = encode_from_tokens(tokens, return_pooled=True)
+    if isinstance(encoded, tuple):
+        cond = encoded[0] if len(encoded) > 0 else None
+        pooled = encoded[1] if len(encoded) > 1 else None
+    else:
+        cond = encoded
+        pooled = None
+
+    if cond is None:
+        return []
+
+    metadata = {}
+    if pooled is not None:
+        metadata["pooled_output"] = pooled
+    return [[cond, metadata]]
+
+
 class ComfyPencilStudio:
     @classmethod
     def INPUT_TYPES(cls):
@@ -126,6 +168,7 @@ class ComfyPencilStudio:
                 "document_id": ("STRING", {"default": "", "multiline": False}),
                 "revision": ("INT", {"default": 0, "min": 0, "max": 999999999, "step": 1}),
                 "run_token": ("INT", {"default": 0, "min": 0, "max": 999999999, "step": 1}),
+                "split_prompt": ("STRING", {"default": "", "multiline": True, "dynamicPrompts": True}),
                 "canvas_width": ("INT", {"default": DEFAULT_WIDTH, "min": 64, "max": 4096, "step": 8}),
                 "canvas_height": ("INT", {"default": DEFAULT_HEIGHT, "min": 64, "max": 4096, "step": 8}),
                 "background_mode": (["transparent", "solid"], {"default": DEFAULT_BACKGROUND_MODE}),
@@ -135,14 +178,15 @@ class ComfyPencilStudio:
             "optional": {
                 "document": DOCUMENT_SOCKET,
                 "background_image": ("IMAGE",),
+                "clip": ("CLIP",),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
             },
         }
 
-    RETURN_TYPES = (DOCUMENT_DATA_TYPE, "IMAGE", "MASK", "IMAGE", "IMAGE", "IMAGE", "IMAGE", "STRING")
-    RETURN_NAMES = ("document", "image", "mask", "height", "roughness", "specular", "light", "metadata_json")
+    RETURN_TYPES = (DOCUMENT_DATA_TYPE, "IMAGE", "MASK", "IMAGE", "IMAGE", "IMAGE", "IMAGE", "STRING", "CONDITIONING")
+    RETURN_NAMES = ("document", "image", "mask", "height", "roughness", "specular", "light", "metadata_json", "conditioning")
     FUNCTION = "render"
     CATEGORY = f"{CATEGORY_ROOT}/studio"
     SEARCH_ALIASES = ["paint", "draw", "sketch", "canvas", "procreate"]
@@ -153,6 +197,7 @@ class ComfyPencilStudio:
         document_id,
         revision,
         run_token=0,
+        split_prompt="",
         canvas_width=DEFAULT_WIDTH,
         canvas_height=DEFAULT_HEIGHT,
         background_mode=DEFAULT_BACKGROUND_MODE,
@@ -160,6 +205,7 @@ class ComfyPencilStudio:
         flatten_background=False,
         document=None,
         background_image=None,
+        clip=None,
         unique_id=None,
     ):
         # Accept the legacy positional signature where `run_token` did not exist yet.
@@ -170,8 +216,9 @@ class ComfyPencilStudio:
             flatten_background = background_color
             background_color = background_mode
             background_mode = canvas_height
-            canvas_height = canvas_width
+            canvas_height = split_prompt
             canvas_width = run_token
+            split_prompt = ""
             run_token = 0
 
         runtime_document = _resolve_document(
@@ -191,6 +238,7 @@ class ComfyPencilStudio:
             or runtime_document.get("id")
             or _studio_preview_key(unique_id)
         )
+        conditioning = _encode_split_prompt_conditioning(clip, split_prompt)
         image, mask = render_document(
             runtime_document,
             background_image=background_image,
@@ -206,6 +254,7 @@ class ComfyPencilStudio:
             pil_to_image_tensor(material_maps["specular"]),
             pil_to_image_tensor(material_maps["light"]),
             document_summary_json(runtime_document),
+            conditioning,
         )
 
 

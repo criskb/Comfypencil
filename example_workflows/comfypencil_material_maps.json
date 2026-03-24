@@ -19,7 +19,8 @@
         { "name": "roughness", "type": "IMAGE", "links": null },
         { "name": "specular", "type": "IMAGE", "links": null },
         { "name": "light", "type": "IMAGE", "links": null },
-        { "name": "metadata_json", "type": "STRING", "links": null }
+        { "name": "metadata_json", "type": "STRING", "links": null },
+        { "name": "conditioning", "type": "CONDITIONING", "links": null }
       ],
       "properties": {
         "Node name for S&R": "ComfyPencilStudio"
@@ -29,6 +30,7 @@
         "",
         0,
         0,
+        "",
         1024,
         1024,
         "transparent",

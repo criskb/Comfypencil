@@ -19,6 +19,10 @@
         "name": "Run Token",
         "tooltip": "Internal cache-buster used when the studio queues manual or timed background runs."
       },
+      "split_prompt": {
+        "name": "Split Prompt",
+        "tooltip": "Prompt text stored on the node and edited from the split-view control dock."
+      },
       "canvas_width": {
         "name": "Canvas Width",
         "tooltip": "Pixel width of the painting surface."
@@ -46,6 +50,10 @@
       "background_image": {
         "name": "Background Image",
         "tooltip": "Optional image used as a background during rendering."
+      },
+      "clip": {
+        "name": "Clip",
+        "tooltip": "Optional CLIP encoder used to turn the split prompt into CONDITIONING."
       }
     },
     "outputs": {
@@ -80,6 +88,10 @@
       "7": {
         "name": "Metadata JSON",
         "tooltip": "Summary JSON for the current document state."
+      },
+      "8": {
+        "name": "Conditioning",
+        "tooltip": "Conditioning encoded from the split prompt when a CLIP input is connected."
       }
     }
   },
