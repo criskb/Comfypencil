@@ -12,7 +12,18 @@ from uuid import uuid4
 
 from PIL import Image
 
-from .constants import API_PREFIX, DEFAULT_BACKGROUND_COLOR, DEFAULT_BACKGROUND_MODE, DEFAULT_DOCUMENT_NAME, DEFAULT_HEIGHT, DEFAULT_LAYER_NAME, DEFAULT_WIDTH, DOCUMENTS_ROOT
+from .constants import (
+    API_PREFIX,
+    DEFAULT_BACKGROUND_COLOR,
+    DEFAULT_BACKGROUND_MODE,
+    DEFAULT_DOCUMENT_NAME,
+    DEFAULT_HEIGHT,
+    DEFAULT_LAYER_NAME,
+    DEFAULT_PRIMARY_COLOR,
+    DEFAULT_SECONDARY_COLOR,
+    DEFAULT_WIDTH,
+    DOCUMENTS_ROOT,
+)
 from .rendering import clamp_canvas_size, make_blank_rgba, metadata_only, normalize_hex_color
 
 PROJECT_FILE_FORMAT = "comfypencil.pencilstudio"
@@ -115,6 +126,7 @@ def _sanitize_document(document: dict[str, Any], *, document_id: str | None = No
         stroke_constraint = 0
     if stroke_constraint not in {0, 15, 30, 45}:
         stroke_constraint = 0
+    paint = document.get("paint") if isinstance(document.get("paint"), dict) else {}
 
     return {
         "id": str(document_id or document.get("id") or uuid4().hex),
@@ -132,6 +144,10 @@ def _sanitize_document(document: dict[str, Any], *, document_id: str | None = No
             "rotation": rotation,
             "symmetry": symmetry,
             "strokeConstraint": stroke_constraint,
+        },
+        "paint": {
+            "primaryColor": normalize_hex_color(paint.get("primaryColor"), DEFAULT_PRIMARY_COLOR),
+            "secondaryColor": normalize_hex_color(paint.get("secondaryColor"), DEFAULT_SECONDARY_COLOR),
         },
         "background": {
             "mode": background_mode,

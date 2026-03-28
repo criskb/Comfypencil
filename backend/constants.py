@@ -22,6 +22,8 @@ MAX_CANVAS_SIZE = 4096
 
 DEFAULT_BACKGROUND_MODE = "transparent"
 DEFAULT_BACKGROUND_COLOR = "#ffffff"
+DEFAULT_PRIMARY_COLOR = "#111111"
+DEFAULT_SECONDARY_COLOR = "#ffffff"
 BACKGROUND_MODES = ("transparent", "solid")
 
 BLEND_MODES = ("normal", "multiply", "screen", "overlay", "soft-light", "add")

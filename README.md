@@ -52,7 +52,7 @@ ComfyPencil is meant to be a working surface, not just another image input. The 
 ## Included Nodes
 
 - [`Comfy Pencil Studio`](web/docs/ComfyPencilStudio.md)
-  Main authoring node. Opens the studio and outputs the current document render.
+  Main authoring node. Opens the studio, accepts optional `CLIP` for split-prompt encoding, and outputs the current document render plus prompt-derived `conditioning`.
 - [`Comfy Pencil Receive Preview`](web/docs/ComfyPencilReceivePreview.md)
   Stores a downstream image back into the studio split preview.
 - [`Comfy Pencil Render Document`](web/docs/ComfyPencilRenderDocument.md)
@@ -84,11 +84,13 @@ ComfyPencil currently targets `ComfyUI >= 0.16.0` in [pyproject.toml](pyproject.
 2. Paint, manage layers, and save presets inside the studio.
 3. Send the node outputs downstream like any other ComfyUI image source.
 4. If you want live feedback, connect a `Comfy Pencil Receive Preview` node and enable split view.
-5. Save the artwork either as document state in the node storage or as a portable `.pencilstudio` project.
-6. Use `Import` / `Export` in the Brush Library when you want to move preset libraries around.
-7. Build a personal swatch palette in the Colors panel and export it when you want to move it elsewhere.
-8. Drop files onto the studio or paste an image from the clipboard to import layers quickly.
-9. Press `?` or use `Help` in the header to open the built-in shortcut guide.
+5. Connect a `CLIP` input to the studio node if you want split-view prompt text encoded directly to `conditioning`.
+6. In split view, write a prompt in the bottom-center dock when you want the downstream workflow and the studio node to share the same prompt source.
+7. Save the artwork either as document state in the node storage or as a portable `.pencilstudio` project.
+8. Use `Import` / `Export` in the Brush Library when you want to move preset libraries around.
+9. Build a personal swatch palette in the Colors panel and export it when you want to move it elsewhere.
+10. Drop files onto the studio or paste an image from the clipboard to import layers quickly.
+11. Press `?` or use `Help` in the header to open the built-in shortcut guide.
 
 Included examples:
 
@@ -124,6 +126,16 @@ When material painting is enabled in the brush settings, ComfyPencil can send se
 - `light`
 
 This makes the node usable for painting texture support maps linked to 3D or look-dev workflows instead of only flat color.
+
+## Prompt-Aware Split View
+
+The Studio node can now act as the prompt handoff point for split-view workflows:
+
+- Connect an optional `CLIP` input to `Comfy Pencil Studio`
+- Type the prompt in the split-view dock inside the studio
+- Use the Studio node's `conditioning` output downstream when you want the graph to reuse that prompt directly
+
+This is useful when the painted document and the watched downstream result should stay tied to one in-studio prompt field instead of a separate text-encode node chain.
 
 ## Current Focus
 
@@ -188,3 +200,5 @@ Release notes for the current major version live in [CHANGELOG.md](CHANGELOG.md)
 ## License
 
 See [LICENSE](LICENSE).
+
+This extension/addon was created using Codex skill designed by Cris K B https://github.com/criskb/comfyui-node-extension-builder

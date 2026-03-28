@@ -64,6 +64,8 @@ import {
   BLEND_MODES,
   BRUSH_PRESETS,
   CANVAS_SYMMETRY_OPTIONS,
+  DEFAULT_PRIMARY_COLOR,
+  DEFAULT_SECONDARY_COLOR,
   DEFAULT_SWATCHES,
   KEY_HINTS,
   STROKE_CONSTRAINT_OPTIONS,
@@ -102,6 +104,7 @@ import {
   resolveAnchoredPanelPosition,
   SPLIT_ARTBOARD_GAP,
 } from "./studio-layout.js";
+import { normalizeHexColor } from "./brush-utils.js";
 
 let stylesInjected = false;
 
@@ -145,6 +148,16 @@ function wrapCanvasText(ctx, text, maxWidth, maxLines = 2) {
   }
   truncated[maxLines - 1] = `${truncated[maxLines - 1].replace(/[.,;:!?\\s]+$/u, "")}…`;
   return truncated;
+}
+
+function normalizePaintSlots(paint, {
+  primaryFallback = DEFAULT_PRIMARY_COLOR,
+  secondaryFallback = DEFAULT_SECONDARY_COLOR,
+} = {}) {
+  return {
+    primaryColor: normalizeHexColor(paint?.primaryColor, normalizeHexColor(primaryFallback, DEFAULT_PRIMARY_COLOR)),
+    secondaryColor: normalizeHexColor(paint?.secondaryColor, normalizeHexColor(secondaryFallback, DEFAULT_SECONDARY_COLOR)),
+  };
 }
 
 function normalizePresetComparableValue(value) {
@@ -329,8 +342,7 @@ export class ComfyPencilStudioOverlay {
     this.sidebarPosition = 152;
     this.colorHistory = [];
     this.customPaletteColors = loadCustomPaletteColors();
-    this.previousColor = "#ffffff";
-    this.lastSyncedBrushColor = "";
+    this.secondaryColor = DEFAULT_SECONDARY_COLOR;
     this.panelButtons = {};
     this.brushControlRegistry = {};
     this.cursorState = {
@@ -468,9 +480,7 @@ export class ComfyPencilStudioOverlay {
         this.previewWheelColor(hex);
       },
       onCommit: (hex) => {
-        this.engine.setBrushColor(hex);
-        this.syncBrushControls();
-        this.syncSwatches();
+        this.setPrimaryColor(hex);
       },
     });
 
@@ -484,6 +494,7 @@ export class ComfyPencilStudioOverlay {
     this.bindIncomingStreamRuntime();
     this.syncIncomingStreamControls();
     this.refreshPanelVisibility();
+    this.pendingNodeCanvasResize = null;
   }
 
   async openForNode(node, { autoSaveMs = 900, recoveryEnabled = true } = {}) {
@@ -522,8 +533,7 @@ export class ComfyPencilStudioOverlay {
     this.panelState.color = false;
     this.panelState.document = false;
     this.colorHistory = [];
-    this.previousColor = "#ffffff";
-    this.lastSyncedBrushColor = "";
+    this.secondaryColor = DEFAULT_SECONDARY_COLOR;
     this.root.classList.add("cp-open");
     this.setStatus("Loading document");
 
@@ -531,12 +541,19 @@ export class ComfyPencilStudioOverlay {
     this.ignoreEngineChanges = true;
     await this.engine.loadDocument(document);
     this.ignoreEngineChanges = false;
-    this.needsSave = false;
-    this.documentMutationVersion = 0;
+    const resizedFromNodeSettings = Boolean(this.pendingNodeCanvasResize);
+    this.needsSave = resizedFromNodeSettings;
+    this.documentMutationVersion = resizedFromNodeSettings ? 1 : 0;
     this.colorWheel.setHex(this.engine.brush.color, { silent: true });
     this.refreshAll();
     await this.checkRecoveryDraft(document);
-    this.setStatus(`Ready · ${document.layers.length} layer${document.layers.length === 1 ? "" : "s"}`);
+    if (resizedFromNodeSettings) {
+      await this.saveNow({ force: true }).catch(() => {});
+      this.setStatus(`Canvas resized · ${document.width} × ${document.height}`);
+    } else {
+      this.setStatus(`Ready · ${document.layers.length} layer${document.layers.length === 1 ? "" : "s"}`);
+    }
+    this.pendingNodeCanvasResize = null;
     this.nameInput.focus({ preventScroll: true });
   }
 
@@ -830,15 +847,16 @@ export class ComfyPencilStudioOverlay {
       element.className = "cp-swatch cp-swatch--custom";
       element.dataset.color = color;
       element.style.background = color;
-      element.title = `${color} · right-click to remove`;
+      element.title = `${color} · click for primary · right-click for secondary · double-click to remove`;
       element.addEventListener("click", () => {
-        this.engine.setBrushColor(color);
+        this.setPrimaryColor(color);
         this.colorWheel.setHex(color, { silent: true });
-        this.syncBrushControls();
-        this.syncSwatches();
       });
       element.addEventListener("contextmenu", (event) => {
         event.preventDefault();
+        this.setSecondaryColor(color);
+      });
+      element.addEventListener("dblclick", () => {
         this.removeCustomPaletteColor(color);
       });
       this.customPaletteSwatches.appendChild(element);
@@ -915,6 +933,15 @@ export class ComfyPencilStudioOverlay {
       this.syncBrushControls();
       this.syncSwatches();
       this.refreshViewportChips();
+      const paint = this.getPaintSlots();
+      if (this.engine.document && paint.primaryColor !== this.engine.brush.color) {
+        this.engine.updateDocumentMeta({
+          paint: {
+            primaryColor: this.engine.brush.color,
+            secondaryColor: paint.secondaryColor,
+          },
+        });
+      }
       return;
     }
 
@@ -997,7 +1024,7 @@ export class ComfyPencilStudioOverlay {
     this.symmetryModeSelect.value = this.engine.getSymmetryMode();
     this.strokeConstraintSelect.value = String(this.engine.getStrokeConstraintDegrees());
     this.hexInput.value = this.engine.brush.color;
-    this.colorPreview.style.background = this.engine.brush.color;
+    this.syncPaintSlots();
     const activeLayer = this.engine.getActiveLayer();
     const activeIndex = this.engine.getActiveLayerIndex();
     const mergeTarget = activeIndex > 0 ? document.layers[activeIndex - 1] : null;
@@ -1819,6 +1846,7 @@ export class ComfyPencilStudioOverlay {
       buttonElement.classList.toggle("cp-active", buttonElement.dataset.presetId === brush.presetId);
     });
     this.previewWheelColor(brush.color);
+    this.syncPaintSlots();
     this.toolHint.textContent = TOOL_DESCRIPTIONS[brush.tool] || "";
     Object.values(this.brushControlRegistry || {}).forEach((control) => {
       this.syncBrushEditorControlField(control, brush);
@@ -2535,29 +2563,103 @@ export class ComfyPencilStudioOverlay {
     }
   }
 
+  getPaintSlots(document = this.engine?.document) {
+    return normalizePaintSlots(document?.paint, {
+      primaryFallback: this.engine?.brush?.color || DEFAULT_PRIMARY_COLOR,
+      secondaryFallback: this.secondaryColor || DEFAULT_SECONDARY_COLOR,
+    });
+  }
+
+  syncPaintSlots() {
+    const paint = this.getPaintSlots();
+    this.secondaryColor = paint.secondaryColor;
+    if (this.primaryColorSlot) {
+      this.primaryColorSlot.style.backgroundColor = this.engine.brush.color;
+    }
+    if (this.primaryColorSlotHex) {
+      this.primaryColorSlotHex.textContent = this.engine.brush.color;
+    }
+    if (this.secondaryColorSlot) {
+      this.secondaryColorSlot.style.backgroundColor = paint.secondaryColor;
+    }
+    if (this.secondaryColorSlotHex) {
+      this.secondaryColorSlotHex.textContent = paint.secondaryColor;
+    }
+  }
+
+  setPrimaryColor(color) {
+    const normalized = normalizeHexColor(color, this.engine?.brush?.color || DEFAULT_PRIMARY_COLOR);
+    const { secondaryColor } = this.getPaintSlots();
+    this.engine.updateDocumentMeta({
+      paint: {
+        primaryColor: normalized,
+        secondaryColor,
+      },
+    });
+    this.engine.setBrushColor(normalized);
+  }
+
+  setSecondaryColor(color, { announce = true } = {}) {
+    const normalized = normalizeHexColor(color, this.secondaryColor || DEFAULT_SECONDARY_COLOR);
+    const { primaryColor } = this.getPaintSlots();
+    this.secondaryColor = normalized;
+    this.engine.updateDocumentMeta({
+      paint: {
+        primaryColor,
+        secondaryColor: normalized,
+      },
+    });
+    this.syncPaintSlots();
+    if (announce) {
+      this.setStatus(`Secondary color ready · ${normalized}`);
+    }
+  }
+
+  swapPaintColors() {
+    const { primaryColor, secondaryColor } = this.getPaintSlots();
+    this.secondaryColor = primaryColor;
+    this.engine.updateDocumentMeta({
+      paint: {
+        primaryColor: secondaryColor,
+        secondaryColor: primaryColor,
+      },
+    });
+    this.engine.setBrushColor(secondaryColor);
+    this.setStatus(`Swapped colors · ${secondaryColor}`);
+  }
+
+  resetPaintColors() {
+    this.secondaryColor = DEFAULT_SECONDARY_COLOR;
+    this.engine.updateDocumentMeta({
+      paint: {
+        primaryColor: DEFAULT_PRIMARY_COLOR,
+        secondaryColor: DEFAULT_SECONDARY_COLOR,
+      },
+    });
+    this.engine.setBrushColor(DEFAULT_PRIMARY_COLOR);
+    this.setStatus("Reset paint colors");
+  }
+
   recordColorHistory(color) {
-    const normalized = String(color || "").trim().toLowerCase();
-    if (!/^#[0-9a-f]{6}$/.test(normalized)) {
+    const normalized = normalizeHexColor(color, "");
+    if (!normalized) {
       return;
     }
-
-    if (this.lastSyncedBrushColor && this.lastSyncedBrushColor !== normalized) {
-      this.previousColor = this.lastSyncedBrushColor;
-    } else if (!this.lastSyncedBrushColor) {
-      this.previousColor = normalized;
-    }
-
-    this.lastSyncedBrushColor = normalized;
     this.colorHistory = [normalized, ...this.colorHistory.filter((item) => item !== normalized)].slice(0, 12);
   }
 
   previewWheelColor(hex) {
-    const normalized = String(hex || "").trim().toLowerCase();
-    if (!/^#[0-9a-f]{6}$/.test(normalized)) {
+    const normalized = normalizeHexColor(hex, "");
+    if (!normalized) {
       return;
     }
     this.hexInput.value = normalized;
-    this.colorPreview.style.background = normalized;
+    if (this.primaryColorSlot) {
+      this.primaryColorSlot.style.backgroundColor = normalized;
+    }
+    if (this.primaryColorSlotHex) {
+      this.primaryColorSlotHex.textContent = normalized;
+    }
     this.colorPanelButtonSwatch.style.background = normalized;
   }
 
@@ -2566,7 +2668,6 @@ export class ComfyPencilStudioOverlay {
       return;
     }
 
-    this.previousColorPreview.style.background = this.previousColor;
     this.colorHistoryButtons.forEach((buttonElement, index) => {
       const color = this.colorHistory[index];
       buttonElement.hidden = !color;
@@ -3529,7 +3630,7 @@ export class ComfyPencilStudioOverlay {
 
     this.colorPanel = document.createElement("section");
     this.colorPanel.className = "cp-panel cp-panel--color";
-    const colorHeader = this.#panelHeader("Colors", "Current, previous, recent, and swatches.");
+    const colorHeader = this.#panelHeader("Colors", "Primary and secondary paint with quick recent and palette access.");
     this.colorPaletteAddButton = button("Add", "cp-button cp-button--ghost cp-button--tiny");
     this.colorPaletteImportButton = button("Import", "cp-button cp-button--ghost cp-button--tiny");
     this.colorPaletteExportButton = button("Export", "cp-button cp-button--ghost cp-button--tiny");
@@ -3540,16 +3641,32 @@ export class ComfyPencilStudioOverlay {
     this.colorWheel.mount(colorSection);
     this.hexInput = textInput("#111111");
     this.hexInput.maxLength = 7;
-    this.colorPreview = document.createElement("button");
-    this.colorPreview.type = "button";
-    this.colorPreview.className = "cp-color-preview";
-    this.previousColorPreview = document.createElement("button");
-    this.previousColorPreview.type = "button";
-    this.previousColorPreview.className = "cp-color-preview cp-color-preview--previous";
-    const colorPair = document.createElement("div");
-    colorPair.className = "cp-color-pair";
-    colorPair.append(this.colorPreview, this.previousColorPreview);
-    colorSection.append(colorPair, createField("Hex", this.hexInput));
+    const colorSlots = document.createElement("div");
+    colorSlots.className = "cp-color-slots";
+    this.primaryColorSlot = document.createElement("button");
+    this.primaryColorSlot.type = "button";
+    this.primaryColorSlot.className = "cp-color-slot cp-color-slot--primary";
+    this.primaryColorSlot.innerHTML = '<span class="cp-color-slot__eyebrow">Primary</span><span class="cp-color-slot__hex"></span>';
+    this.primaryColorSlotHex = this.primaryColorSlot.querySelector(".cp-color-slot__hex");
+    this.secondaryColorSlot = document.createElement("button");
+    this.secondaryColorSlot.type = "button";
+    this.secondaryColorSlot.className = "cp-color-slot cp-color-slot--secondary";
+    this.secondaryColorSlot.innerHTML = '<span class="cp-color-slot__eyebrow">Secondary</span><span class="cp-color-slot__hex"></span>';
+    this.secondaryColorSlotHex = this.secondaryColorSlot.querySelector(".cp-color-slot__hex");
+    colorSlots.append(this.primaryColorSlot, this.secondaryColorSlot);
+
+    const colorSlotActions = document.createElement("div");
+    colorSlotActions.className = "cp-color-slot-actions";
+    this.swapColorsButton = button("Swap", "cp-button cp-button--ghost cp-button--tiny");
+    this.swapColorsButton.title = "Swap primary and secondary colors (X)";
+    this.resetColorsButton = button("Default", "cp-button cp-button--ghost cp-button--tiny");
+    this.resetColorsButton.title = "Reset paint colors to black and white (D)";
+    colorSlotActions.append(this.swapColorsButton, this.resetColorsButton);
+
+    const colorMeta = document.createElement("div");
+    colorMeta.className = "cp-color-section__meta";
+    colorMeta.textContent = "Right-click any recent or palette swatch to load the secondary slot.";
+    colorSection.append(colorSlots, colorSlotActions, createField("Hex", this.hexInput), colorMeta);
 
     const historyLabel = document.createElement("div");
     historyLabel.className = "cp-header__eyebrow";
@@ -3561,15 +3678,22 @@ export class ComfyPencilStudioOverlay {
       element.type = "button";
       element.className = "cp-color-history__swatch";
       element.hidden = true;
+      element.title = "Click to use as primary color · right-click to load the secondary slot";
       element.addEventListener("click", () => {
         const color = element.dataset.color;
         if (!color) {
           return;
         }
-        this.engine.setBrushColor(color);
+        this.setPrimaryColor(color);
         this.colorWheel.setHex(color, { silent: true });
-        this.syncBrushControls();
-        this.syncSwatches();
+      });
+      element.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        const color = element.dataset.color;
+        if (!color) {
+          return;
+        }
+        this.setSecondaryColor(color);
       });
       historyStrip.appendChild(element);
       return element;
@@ -3607,11 +3731,14 @@ export class ComfyPencilStudioOverlay {
       element.className = "cp-swatch";
       element.dataset.color = color;
       element.style.background = color;
+      element.title = "Click to use as primary color · right-click to load the secondary slot";
       element.addEventListener("click", () => {
-        this.engine.setBrushColor(color);
+        this.setPrimaryColor(color);
         this.colorWheel.setHex(color, { silent: true });
-        this.syncBrushControls();
-        this.syncSwatches();
+      });
+      element.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        this.setSecondaryColor(color);
       });
       swatches.appendChild(element);
       return element;
@@ -4196,20 +4323,26 @@ export class ComfyPencilStudioOverlay {
         this.commitBrushEditorControl(definition, input.value);
       });
     });
-    this.colorPreview.addEventListener("click", () => this.hexInput.focus());
-    this.previousColorPreview.addEventListener("click", () => {
-      this.engine.setBrushColor(this.previousColor);
-      this.colorWheel.setHex(this.previousColor, { silent: true });
-      this.syncBrushControls();
-      this.syncSwatches();
+    this.primaryColorSlot.addEventListener("click", () => this.hexInput.focus());
+    this.secondaryColorSlot.addEventListener("click", () => {
+      const { secondaryColor } = this.getPaintSlots();
+      this.setPrimaryColor(secondaryColor);
+      this.colorWheel.setHex(secondaryColor, { silent: true });
+    });
+    this.swapColorsButton.addEventListener("click", () => {
+      this.swapPaintColors();
+      this.colorWheel.setHex(this.engine.brush.color, { silent: true });
+    });
+    this.resetColorsButton.addEventListener("click", () => {
+      this.resetPaintColors();
+      this.colorWheel.setHex(this.engine.brush.color, { silent: true });
     });
 
     this.hexInput.addEventListener("change", () => {
       const hex = this.hexInput.value.startsWith("#") ? this.hexInput.value : `#${this.hexInput.value}`;
-      this.engine.setBrushColor(hex.slice(0, 7));
-      this.colorWheel.setHex(hex.slice(0, 7), { silent: true });
-      this.syncBrushControls();
-      this.syncSwatches();
+      const normalized = normalizeHexColor(hex.slice(0, 7), this.engine.brush.color);
+      this.setPrimaryColor(normalized);
+      this.colorWheel.setHex(normalized, { silent: true });
     });
 
     this.backgroundModeSelect.addEventListener("change", () => {
@@ -4568,6 +4701,12 @@ export class ComfyPencilStudioOverlay {
         this.setBrushTool("eyedropper");
       } else if (key === "h") {
         this.setBrushTool("pan");
+      } else if (key === "x") {
+        this.swapPaintColors();
+        this.colorWheel.setHex(this.engine.brush.color, { silent: true });
+      } else if (key === "d") {
+        this.resetPaintColors();
+        this.colorWheel.setHex(this.engine.brush.color, { silent: true });
       } else if (event.key === "[") {
         this.engine.patchBrush({ size: Math.max(1, this.engine.brush.size - 2) });
       } else if (event.key === "]") {
@@ -4585,7 +4724,7 @@ export class ComfyPencilStudioOverlay {
       } else if (key === "l") {
         this.engine.setStrokeConstraintDegrees(getNextStrokeConstraint(this.engine.getStrokeConstraintDegrees()));
       }
-      if (!["b", "e", "m", "g", "i", "h"].includes(key)) {
+      if (!["b", "e", "m", "g", "i", "h", "x", "d"].includes(key)) {
         this.syncBrushControls();
       }
     });
@@ -4598,20 +4737,39 @@ export class ComfyPencilStudioOverlay {
   }
 
   async #ensureDocumentLoaded() {
+    const requestedWidth = Number(getWidgetValue(this.node, "canvas_width", 1024));
+    const requestedHeight = Number(getWidgetValue(this.node, "canvas_height", 1024));
     const documentId = String(getWidgetValue(this.node, "document_id", "") || "").trim();
     if (!documentId) {
       const created = await createDocument({
         name: String(getWidgetValue(this.node, "document_name", "Untitled Sketch")),
-        width: Number(getWidgetValue(this.node, "canvas_width", 1024)),
-        height: Number(getWidgetValue(this.node, "canvas_height", 1024)),
+        width: requestedWidth,
+        height: requestedHeight,
         backgroundMode: String(getWidgetValue(this.node, "background_mode", "transparent")),
         backgroundColor: String(getWidgetValue(this.node, "background_color", "#ffffff")),
       });
       this.#syncNodeWidgets(created);
+      this.pendingNodeCanvasResize = null;
       return created;
     }
 
-    return loadDocument(documentId);
+    const loaded = await loadDocument(documentId);
+    if (
+      Number(loaded.width || 0) !== Number(requestedWidth || 0)
+      || Number(loaded.height || 0) !== Number(requestedHeight || 0)
+    ) {
+      this.pendingNodeCanvasResize = {
+        width: requestedWidth,
+        height: requestedHeight,
+      };
+      return {
+        ...loaded,
+        width: requestedWidth,
+        height: requestedHeight,
+      };
+    }
+    this.pendingNodeCanvasResize = null;
+    return loaded;
   }
 
   #syncNodeWidgets(document) {

@@ -22,6 +22,8 @@ export const STUDIO_SHORTCUT_SECTIONS = [
       { keys: ["G"], description: "Fill" },
       { keys: ["I"], description: "Color picker" },
       { keys: ["H"], description: "Pan tool" },
+      { keys: ["X"], description: "Swap primary and secondary colors" },
+      { keys: ["D"], description: "Reset paint colors to defaults" },
       { keys: ["V"], description: "Toggle split preview" },
     ],
   },

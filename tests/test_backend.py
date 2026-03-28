@@ -79,6 +79,35 @@ class ComfyPencilBackendTests(unittest.TestCase):
             self.assertEqual(image.size, (320, 180))
             self.assertEqual(mask.size, (320, 180))
 
+    def test_studio_render_respects_widget_canvas_size_for_existing_document(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store, rendering, nodes = load_modules(Path(temp_dir))
+            created = store.create_document(name="Resize Test", width=320, height=180)
+            runtime = store.load_runtime_document(created["id"])
+            studio = nodes.ComfyPencilStudio()
+
+            document, image_tensor, mask_tensor, *_ = studio.render(
+                "Resize Test",
+                created["id"],
+                created["revision"],
+                0,
+                "",
+                160,
+                96,
+                "transparent",
+                "#ffffff",
+                False,
+                document=runtime,
+                unique_id="11",
+            )
+
+            rendered_image = rendering.tensor_to_pil_rgb(image_tensor)
+            rendered_mask = rendering.mask_to_pil(mask_tensor)
+            self.assertEqual(document["width"], 160)
+            self.assertEqual(document["height"], 96)
+            self.assertEqual(rendered_image.size, (160, 96))
+            self.assertEqual(rendered_mask.size, (160, 96))
+
     def test_runtime_save_increments_revision(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store, rendering, _ = load_modules(Path(temp_dir))
@@ -125,6 +154,21 @@ class ComfyPencilBackendTests(unittest.TestCase):
             self.assertEqual(runtime["assist"]["symmetry"], "quadrant")
             self.assertAlmostEqual(float(runtime["assist"]["rotation"]), 27.5)
             self.assertEqual(int(runtime["assist"]["strokeConstraint"]), 30)
+
+    def test_paint_metadata_round_trips(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store, _, _ = load_modules(Path(temp_dir))
+            document = store.create_document(name="Paint Test", width=192, height=192)
+            document["paint"] = {"primaryColor": "#4aa7ff", "secondaryColor": "#f6814f"}
+
+            saved = store.save_document(document)
+            metadata = store.load_document_metadata(saved["id"])
+            runtime = store.load_runtime_document(saved["id"])
+
+            self.assertEqual(metadata["paint"]["primaryColor"], "#4aa7ff")
+            self.assertEqual(metadata["paint"]["secondaryColor"], "#f6814f")
+            self.assertEqual(runtime["paint"]["primaryColor"], "#4aa7ff")
+            self.assertEqual(runtime["paint"]["secondaryColor"], "#f6814f")
 
     def test_split_preview_is_saved(self):
         with tempfile.TemporaryDirectory() as temp_dir:

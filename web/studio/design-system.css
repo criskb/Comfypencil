@@ -1,18 +1,18 @@
 :root {
-  --cp-bg: #111318;
-  --cp-bg-soft: #181b22;
-  --cp-bg-elevated: #1b2129;
-  --cp-bg-card: #252c36;
-  --cp-line: rgba(255, 255, 255, 0.08);
-  --cp-line-strong: rgba(255, 255, 255, 0.14);
+  --cp-bg: #0f1217;
+  --cp-bg-soft: #141920;
+  --cp-bg-elevated: #171d25;
+  --cp-bg-card: #202833;
+  --cp-line: rgba(255, 255, 255, 0.07);
+  --cp-line-strong: rgba(255, 255, 255, 0.12);
   --cp-text: #f5f7fb;
-  --cp-text-soft: rgba(245, 247, 251, 0.62);
-  --cp-text-dim: rgba(245, 247, 251, 0.42);
-  --cp-accent: #4aa7ff;
-  --cp-accent-2: #7e6dff;
-  --cp-accent-warm: #f6814f;
-  --cp-shadow: 0 36px 80px rgba(0, 0, 0, 0.38);
-  --cp-panel-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+  --cp-text-soft: rgba(245, 247, 251, 0.58);
+  --cp-text-dim: rgba(245, 247, 251, 0.34);
+  --cp-accent: #63b3ff;
+  --cp-accent-2: #5e7cff;
+  --cp-accent-warm: #f08b55;
+  --cp-shadow: 0 28px 72px rgba(0, 0, 0, 0.34);
+  --cp-panel-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
 }
 
 .cp-actions {
@@ -34,24 +34,25 @@
 }
 
 .cp-button {
-  padding: 0.72rem 1rem;
-  border-radius: 16px;
+  padding: 0.62rem 0.88rem;
+  border-radius: 14px;
   background: var(--cp-bg-card);
   color: var(--cp-text);
   border: 1px solid var(--cp-line);
-  font: 600 0.86rem/1 "SF Pro Display", "Avenir Next", sans-serif;
-  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+  font: 600 0.8rem/1 "SF Pro Display", "Avenir Next", sans-serif;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease, color 120ms ease;
 }
 
 .cp-button:hover {
   transform: translateY(-1px);
-  background: #303947;
-  border-color: rgba(255, 255, 255, 0.14);
+  background: #27313d;
+  border-color: rgba(255, 255, 255, 0.11);
 }
 
 .cp-button.cp-primary {
-  background: #4b9df8;
-  border-color: rgba(75, 157, 248, 0.9);
+  background: linear-gradient(180deg, #5caeff, #4695ef);
+  border-color: rgba(99, 179, 255, 0.78);
   color: #ffffff;
 }
 
@@ -62,7 +63,7 @@
 }
 
 .cp-button.cp-button--ghost {
-  background: var(--cp-bg-elevated);
+  background: rgba(255, 255, 255, 0.02);
   border-color: var(--cp-line);
   color: var(--cp-text-soft);
 }
@@ -74,15 +75,16 @@
 }
 
 .cp-button--tiny {
-  padding: 0.44rem 0.72rem;
-  border-radius: 12px;
-  font-size: 0.72rem;
+  padding: 0.38rem 0.62rem;
+  border-radius: 11px;
+  font-size: 0.68rem;
 }
 
 .cp-panel {
-  padding: 1rem;
-  border-radius: 24px;
-  background: var(--cp-bg-elevated);
+  padding: 0.9rem;
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(26, 32, 40, 0.94), rgba(19, 24, 32, 0.96));
   border: 1px solid var(--cp-line);
   box-shadow: var(--cp-panel-shadow);
 }
@@ -103,7 +105,7 @@
 .cp-control label,
 .cp-layer__meta,
 .cp-hint {
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   color: var(--cp-text-soft);
 }
 
@@ -120,12 +122,12 @@
 .cp-layer__name,
 .cp-layer__mix select {
   width: 100%;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid var(--cp-line);
-  padding: 0.72rem 0.8rem;
-  background: rgba(255, 255, 255, 0.06);
+  padding: 0.62rem 0.72rem;
+  background: rgba(255, 255, 255, 0.04);
   color: var(--cp-text);
-  font: 500 0.88rem/1.2 "SF Pro Display", "Avenir Next", sans-serif;
+  font: 500 0.82rem/1.2 "SF Pro Display", "Avenir Next", sans-serif;
 }
 
 .cp-control input[type="text"]:focus,
@@ -189,10 +191,10 @@
 .cp-subpanel {
   display: grid;
   gap: 0.55rem;
-  padding: 0.85rem;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0.76rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .cp-subpanel h4 {

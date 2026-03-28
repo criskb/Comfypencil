@@ -14,6 +14,8 @@ from .constants import (
     DEFAULT_BACKGROUND_MODE,
     DEFAULT_DOCUMENT_NAME,
     DEFAULT_HEIGHT,
+    DEFAULT_PRIMARY_COLOR,
+    DEFAULT_SECONDARY_COLOR,
     DEFAULT_WIDTH,
     DOCUMENT_DATA_TYPE,
     EXTRACT_NODE_ID,
@@ -83,6 +85,10 @@ def _resolve_document(
         "background": {
             "mode": background_mode or DEFAULT_BACKGROUND_MODE,
             "color": background_color or DEFAULT_BACKGROUND_COLOR,
+        },
+        "paint": {
+            "primaryColor": DEFAULT_PRIMARY_COLOR,
+            "secondaryColor": DEFAULT_SECONDARY_COLOR,
         },
         "layers": [
             {
@@ -238,6 +244,23 @@ class ComfyPencilStudio:
             or runtime_document.get("id")
             or _studio_preview_key(unique_id)
         )
+        requested_width = int(canvas_width or runtime_document.get("width") or DEFAULT_WIDTH)
+        requested_height = int(canvas_height or runtime_document.get("height") or DEFAULT_HEIGHT)
+        if (
+            int(runtime_document.get("width") or 0) != requested_width
+            or int(runtime_document.get("height") or 0) != requested_height
+        ):
+            runtime_document = resolve_runtime_document({
+                **runtime_document,
+                "width": requested_width,
+                "height": requested_height,
+            })
+            runtime_document["studioNodeId"] = str(unique_id or runtime_document.get("studioNodeId") or "")
+            runtime_document["previewKey"] = str(
+                runtime_document.get("previewKey")
+                or runtime_document.get("id")
+                or _studio_preview_key(unique_id)
+            )
         conditioning = _encode_split_prompt_conditioning(clip, split_prompt)
         image, mask = render_document(
             runtime_document,

@@ -20,6 +20,14 @@ export function rgbToHex({ r, g, b }) {
   return `#${[r, g, b].map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0")).join("")}`;
 }
 
+export function normalizeHexColor(hex, fallback = "#000000") {
+  if (typeof hex !== "string") {
+    return fallback;
+  }
+  const normalized = hex.trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : fallback;
+}
+
 export function rgbToHsv({ r, g, b, a = 255 }) {
   const red = clamp(r, 0, 255) / 255;
   const green = clamp(g, 0, 255) / 255;

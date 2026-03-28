@@ -1,7 +1,14 @@
-import { BLEND_MODES, BRUSH_PRESETS, CANVAS_SYMMETRY_OPTIONS, STROKE_CONSTRAINT_OPTIONS } from "./constants.js";
+import {
+  BLEND_MODES,
+  BRUSH_PRESETS,
+  CANVAS_SYMMETRY_OPTIONS,
+  DEFAULT_PRIMARY_COLOR,
+  DEFAULT_SECONDARY_COLOR,
+  STROKE_CONSTRAINT_OPTIONS,
+} from "./constants.js";
 import { packBrushMaterial, stampBrushDab } from "./brush-stamp.js";
 import { prepareBrushTextureState } from "./brush-textures.js";
-import { clamp, lerp, rgbToHex } from "./brush-utils.js";
+import { clamp, lerp, normalizeHexColor, rgbToHex } from "./brush-utils.js";
 
 const SYMMETRY_MODE_SET = new Set(CANVAS_SYMMETRY_OPTIONS.map((option) => option.value));
 const STROKE_CONSTRAINT_SET = new Set(STROKE_CONSTRAINT_OPTIONS.map((option) => Number(option.value)));
@@ -61,6 +68,14 @@ function normalizeAssist(assist) {
     rotation,
     symmetry,
     strokeConstraint,
+  };
+}
+
+function normalizePaint(paint, fallbackPrimary = DEFAULT_PRIMARY_COLOR) {
+  const primaryColor = normalizeHexColor(paint?.primaryColor, normalizeHexColor(fallbackPrimary, DEFAULT_PRIMARY_COLOR));
+  return {
+    primaryColor,
+    secondaryColor: normalizeHexColor(paint?.secondaryColor, DEFAULT_SECONDARY_COLOR),
   };
 }
 
@@ -203,7 +218,7 @@ export class CanvasEngine {
     };
     const initialPreset = this.brushPresets[0] || BRUSH_PRESETS[0] || {};
     this.brush = {
-      color: "#111111",
+      color: DEFAULT_PRIMARY_COLOR,
       tool: "brush",
       presetId: initialPreset.id,
       ...initialPreset,
@@ -221,6 +236,7 @@ export class CanvasEngine {
     this.document = {
       ...document,
       assist: normalizeAssist(document.assist),
+      paint: normalizePaint(document.paint, DEFAULT_PRIMARY_COLOR),
       layers: hydratedLayers.length
         ? hydratedLayers
         : [blankLayer(document.width, document.height, "layer_1", "Layer 1")],
@@ -228,6 +244,10 @@ export class CanvasEngine {
     if (!this.document.activeLayerId || !this.document.layers.some((layer) => layer.id === this.document.activeLayerId)) {
       this.document.activeLayerId = this.document.layers[this.document.layers.length - 1].id;
     }
+    this.brush = {
+      ...this.brush,
+      color: this.document.paint.primaryColor,
+    };
     this.compositeCanvas.width = this.document.width;
     this.compositeCanvas.height = this.document.height;
     this.historyUndo = [];
@@ -1013,6 +1033,7 @@ export class CanvasEngine {
       createdAt: this.document.createdAt || null,
       updatedAt: this.document.updatedAt || null,
       activeLayerId: this.document.activeLayerId,
+      paint: normalizePaint(this.document.paint, this.brush.color),
       background: {
         mode: this.document.background?.mode || "transparent",
         color: this.document.background?.color || "#ffffff",
@@ -1039,9 +1060,14 @@ export class CanvasEngine {
     this.document.updatedAt = savedDocument.updatedAt;
     this.document.createdAt = savedDocument.createdAt;
     this.document.name = savedDocument.name;
+    this.document.paint = normalizePaint(savedDocument.paint, this.brush.color);
     this.document.background = { ...savedDocument.background };
     this.document.assist = normalizeAssist(savedDocument.assist);
     this.document.activeLayerId = savedDocument.activeLayerId;
+    this.brush = {
+      ...this.brush,
+      color: this.document.paint.primaryColor,
+    };
     this.document.layers = this.document.layers
       .filter((layer) => savedDocument.layers.some((saved) => saved.id === layer.id))
       .map((layer) => {
@@ -1068,6 +1094,10 @@ export class CanvasEngine {
         ...this.document.assist,
         ...(patch.assist || {}),
       }),
+      paint: normalizePaint({
+        ...this.document.paint,
+        ...(patch.paint || {}),
+      }, this.brush.color),
     };
     this.render();
     this.#emitChange("document");

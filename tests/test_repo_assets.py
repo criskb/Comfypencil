@@ -28,6 +28,13 @@ def normalize_output_label(value: str) -> str:
 
 
 class ComfyPencilRepoAssetTests(unittest.TestCase):
+    def test_readme_includes_skill_attribution_footer(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "This extension/addon was created using Codex skill designed by Cris K B https://github.com/criskb/comfyui-node-extension-builder",
+            readme,
+        )
+
     def test_node_defs_match_current_node_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             nodes = load_nodes_module(Path(temp_dir))

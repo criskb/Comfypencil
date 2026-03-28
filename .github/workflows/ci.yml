@@ -54,3 +54,11 @@ jobs:
           node --check --input-type=module < web/comfy_pencil_extension.js
           node --check --input-type=module < web/studio/studio-app.js
           node --check --input-type=module < web/studio/project-file.js
+
+      - name: Block deprecated menu monkey patches
+        run: |
+          ! rg -n "LGraphCanvas\\.prototype\\.getCanvasMenuOptions|prototype\\.getExtraMenuOptions" web backend .
+
+      - name: Block registry-prohibited patterns
+        run: |
+          ! rg -n "\\beval\\s*\\(|\\bexec\\s*\\(" backend web __init__.py .

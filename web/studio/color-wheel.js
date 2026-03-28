@@ -105,6 +105,9 @@ export class ColorWheelControl {
     this.hsv = { h: 220, s: 0.5, v: 0.5 };
     this.root = document.createElement("div");
     this.root.className = "cp-wheel";
+    this.root.style.setProperty("--cp-wheel-size", `${WHEEL_SIZE}px`);
+    this.root.style.setProperty("--cp-wheel-square-size", `${SQUARE_SIZE}px`);
+    this.root.style.setProperty("--cp-wheel-square-offset", `${SQUARE_OFFSET}px`);
 
     this.wheelCanvas = document.createElement("canvas");
     this.wheelCanvas.className = "cp-wheel__ring";

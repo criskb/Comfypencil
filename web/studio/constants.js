@@ -2,6 +2,8 @@ export const EXTENSION_NAME = "ComfyPencil.Studio";
 export const STUDIO_NODE_ID = "ComfyPencilStudio";
 export const API_PREFIX = "/comfypencil";
 export const SIDEBAR_TAB_ID = "comfypencilSidebar";
+export const DEFAULT_PRIMARY_COLOR = "#111111";
+export const DEFAULT_SECONDARY_COLOR = "#ffffff";
 
 export const COMMANDS = {
   OPEN_SELECTED: "ComfyPencil.OpenSelectedStudio",

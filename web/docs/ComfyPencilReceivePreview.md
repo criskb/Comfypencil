@@ -16,4 +16,4 @@ Notes:
 - The split preview is keyed by the document id.
 - Open the studio at least once so the document has a stable id before relying on the preview receiver.
 - `resize_mode` controls how the incoming image is fit into the document dimensions before being shown in split view.
-- In split view you can use `Refresh`, `Active Run`, and `Stop` from the bottom-center dock to drive the background workflow and update this preview.
+- In split view you can use the dock prompt field, `Refresh`, `Active Run`, and `Stop` from the bottom-center dock to drive the background workflow and update this preview.

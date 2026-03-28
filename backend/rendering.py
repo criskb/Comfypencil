@@ -19,6 +19,8 @@ from .constants import (
     DEFAULT_DOCUMENT_NAME,
     DEFAULT_HEIGHT,
     DEFAULT_LAYER_NAME,
+    DEFAULT_PRIMARY_COLOR,
+    DEFAULT_SECONDARY_COLOR,
     DEFAULT_WIDTH,
     MAX_CANVAS_SIZE,
     MIN_CANVAS_SIZE,
@@ -173,6 +175,7 @@ def metadata_only(document: dict[str, Any]) -> dict[str, Any]:
         stroke_constraint = 0
     if stroke_constraint not in {0, 15, 30, 45}:
         stroke_constraint = 0
+    paint = document.get("paint") if isinstance(document.get("paint"), dict) else {}
 
     clean = {
         "id": document.get("id"),
@@ -190,6 +193,10 @@ def metadata_only(document: dict[str, Any]) -> dict[str, Any]:
             "rotation": rotation,
             "symmetry": symmetry,
             "strokeConstraint": stroke_constraint,
+        },
+        "paint": {
+            "primaryColor": normalize_hex_color(paint.get("primaryColor"), DEFAULT_PRIMARY_COLOR),
+            "secondaryColor": normalize_hex_color(paint.get("secondaryColor"), DEFAULT_SECONDARY_COLOR),
         },
         "background": {
             "mode": (
